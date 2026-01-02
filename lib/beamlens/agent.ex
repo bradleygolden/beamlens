@@ -6,6 +6,12 @@ defmodule Beamlens.Agent do
   structured health assessments. The agent selects which tools to call
   and accumulates context until it generates a final analysis.
 
+  ## Telemetry
+
+  The agent emits telemetry events for observability. See `Beamlens.Telemetry`
+  for the full list of events. All events include a `trace_id` that correlates
+  the entire agent run and all its LLM calls and tool executions.
+
   ## Architecture
 
   The agent loop:
@@ -21,7 +27,7 @@ defmodule Beamlens.Agent do
   require Logger
 
   alias Strider.Context
-  alias Beamlens.Tools
+  alias Beamlens.{Telemetry, Tools}
 
   @default_max_iterations 10
 
@@ -35,6 +41,7 @@ defmodule Beamlens.Agent do
 
     * `:max_iterations` - Maximum tool calls before forcing completion (default: 10)
     * `:llm_client` - BAML client name to use (default: "Haiku", or "Ollama" for local)
+    * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
 
   ## Examples
 
@@ -44,10 +51,14 @@ defmodule Beamlens.Agent do
 
       # Use local Ollama model
       {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama")
+
+      # Provide custom trace_id
+      {:ok, analysis} = Beamlens.Agent.run(trace_id: "my-trace-123")
   """
   def run(opts \\ []) do
     max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
     llm_client = Keyword.get(opts, :llm_client)
+    trace_id = Keyword.get(opts, :trace_id, Telemetry.generate_trace_id())
 
     backend_config =
       [
@@ -58,86 +69,155 @@ defmodule Beamlens.Agent do
       ]
       |> maybe_add_llm_client(llm_client)
 
-    agent = Strider.Agent.new({Strider.Backends.Baml, backend_config})
+    agent =
+      Strider.Agent.new(
+        {Strider.Backends.Baml, backend_config},
+        hooks: Beamlens.Telemetry.Hooks
+      )
 
     context =
       Context.new(
         metadata: %{
+          trace_id: trace_id,
           started_at: DateTime.utc_now(),
-          node: Node.self()
+          node: Node.self(),
+          iteration: 0,
+          tool_count: 0
         }
       )
 
     loop(agent, context, max_iterations)
   end
 
-  defp loop(_agent, _context, 0) do
-    Logger.warning("[BeamLens] Agent reached max iterations without completing")
+  defp loop(_agent, context, 0) do
+    Logger.warning("[BeamLens] Agent reached max iterations without completing",
+      trace_id: context.metadata.trace_id
+    )
+
     {:error, :max_iterations_exceeded}
   end
 
   defp loop(agent, context, remaining) do
     case Strider.call(agent, [], context, output_schema: Tools.schema()) do
       {:ok, response, new_context} ->
-        Logger.debug("[BeamLens] Agent selected: #{inspect(response.content)}")
+        Logger.debug("[BeamLens] Agent selected: #{inspect(response.content)}",
+          trace_id: context.metadata.trace_id
+        )
+
         execute_tool(response.content, agent, new_context, remaining - 1)
 
       {:error, reason} = error ->
-        Logger.warning("[BeamLens] SelectTool failed: #{inspect(reason)}")
+        Logger.warning("[BeamLens] SelectTool failed: #{inspect(reason)}",
+          trace_id: context.metadata.trace_id
+        )
+
         error
     end
   end
 
-  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, _context, _remaining) do
-    Logger.info("[BeamLens] Agent completed with status: #{analysis.status}")
+  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, context, _remaining) do
+    Logger.info("[BeamLens] Agent completed with status: #{analysis.status}",
+      trace_id: context.metadata.trace_id,
+      tool_count: context.metadata.tool_count
+    )
+
     {:ok, analysis}
   end
 
-  defp execute_tool(%Tools.GetSystemInfo{}, agent, context, remaining) do
-    continue(agent, context, "get_system_info", Beamlens.Collector.system_info(), remaining)
+  defp execute_tool(%Tools.GetSystemInfo{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
+      agent,
+      context,
+      "get_system_info",
+      intent,
+      &Beamlens.Collector.system_info/0,
+      remaining
+    )
   end
 
-  defp execute_tool(%Tools.GetMemoryStats{}, agent, context, remaining) do
-    continue(agent, context, "get_memory_stats", Beamlens.Collector.memory_stats(), remaining)
+  defp execute_tool(%Tools.GetMemoryStats{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
+      agent,
+      context,
+      "get_memory_stats",
+      intent,
+      &Beamlens.Collector.memory_stats/0,
+      remaining
+    )
   end
 
-  defp execute_tool(%Tools.GetProcessStats{}, agent, context, remaining) do
-    continue(agent, context, "get_process_stats", Beamlens.Collector.process_stats(), remaining)
+  defp execute_tool(%Tools.GetProcessStats{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
+      agent,
+      context,
+      "get_process_stats",
+      intent,
+      &Beamlens.Collector.process_stats/0,
+      remaining
+    )
   end
 
-  defp execute_tool(%Tools.GetSchedulerStats{}, agent, context, remaining) do
-    continue(
+  defp execute_tool(%Tools.GetSchedulerStats{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
       agent,
       context,
       "get_scheduler_stats",
-      Beamlens.Collector.scheduler_stats(),
+      intent,
+      &Beamlens.Collector.scheduler_stats/0,
       remaining
     )
   end
 
-  defp execute_tool(%Tools.GetAtomStats{}, agent, context, remaining) do
-    continue(agent, context, "get_atom_stats", Beamlens.Collector.atom_stats(), remaining)
+  defp execute_tool(%Tools.GetAtomStats{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
+      agent,
+      context,
+      "get_atom_stats",
+      intent,
+      &Beamlens.Collector.atom_stats/0,
+      remaining
+    )
   end
 
-  defp execute_tool(%Tools.GetPersistentTerms{}, agent, context, remaining) do
-    continue(
+  defp execute_tool(%Tools.GetPersistentTerms{intent: intent}, agent, context, remaining) do
+    execute_and_continue(
       agent,
       context,
       "get_persistent_terms",
-      Beamlens.Collector.persistent_terms(),
+      intent,
+      &Beamlens.Collector.persistent_terms/0,
       remaining
     )
   end
 
-  defp execute_tool(unknown, _agent, _context, _remaining) do
-    Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}")
+  defp execute_tool(unknown, _agent, context, _remaining) do
+    Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}",
+      trace_id: context.metadata.trace_id
+    )
+
     {:error, {:unknown_tool, unknown}}
   end
 
-  defp continue(agent, context, tool_name, result, remaining) do
-    Logger.debug("[BeamLens] Tool #{tool_name} returned: #{inspect(result)}")
+  defp execute_and_continue(agent, context, tool_name, intent, tool_fn, remaining) do
+    trace_metadata = %{
+      trace_id: context.metadata.trace_id,
+      iteration: context.metadata.iteration,
+      tool_name: tool_name,
+      intent: intent || ""
+    }
 
-    new_context = add_tool_message(context, Jason.encode!(result), %{tool: tool_name})
+    result = Telemetry.tool_span(trace_metadata, tool_fn)
+
+    Logger.debug("[BeamLens] Tool #{tool_name} returned: #{inspect(result)}",
+      trace_id: context.metadata.trace_id
+    )
+
+    new_context =
+      context
+      |> add_tool_message(Jason.encode!(result), %{tool: tool_name})
+      |> increment_iteration()
+      |> increment_tool_count()
+
     loop(agent, new_context, remaining)
   end
 
@@ -149,6 +229,14 @@ defmodule Beamlens.Agent do
     }
 
     %{context | messages: context.messages ++ [message]}
+  end
+
+  defp increment_iteration(context) do
+    put_in(context.metadata.iteration, context.metadata.iteration + 1)
+  end
+
+  defp increment_tool_count(context) do
+    put_in(context.metadata.tool_count, context.metadata.tool_count + 1)
   end
 
   defp maybe_add_llm_client(config, nil), do: config

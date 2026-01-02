@@ -3,10 +3,13 @@ defmodule Beamlens.Runner do
   Periodic runner for BeamLens health checks.
 
   Runs the agent at configurable intervals and logs results.
+  Each run is assigned a unique `trace_id` for correlation.
   """
 
   use GenServer
   require Logger
+
+  alias Beamlens.Telemetry
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -24,7 +27,6 @@ defmodule Beamlens.Runner do
     }
 
     if mode != :manual do
-      # Run first check after a short delay to let the app stabilize
       schedule_run(5_000)
     end
 
@@ -34,25 +36,33 @@ defmodule Beamlens.Runner do
   @impl true
   def handle_info(:run, state) do
     node = Atom.to_string(Node.self())
+    trace_id = Telemetry.generate_trace_id()
 
     {_result, new_state} =
-      Beamlens.Telemetry.span(%{node: node}, fn ->
-        case Beamlens.Agent.run() do
+      Telemetry.span(%{node: node, trace_id: trace_id}, fn ->
+        case Beamlens.Agent.run(trace_id: trace_id) do
           {:ok, analysis} ->
-            Logger.info("[BeamLens] Health Analysis: #{analysis.status}")
+            Logger.info("[BeamLens] Health Analysis: #{analysis.status}",
+              trace_id: trace_id
+            )
 
             metadata = %{
               node: node,
+              trace_id: trace_id,
               status: analysis.status,
-              analysis: analysis
+              analysis: analysis,
+              tool_count: 0
             }
 
             new_state = %{state | last_run_at: DateTime.utc_now()}
             {{{:ok, analysis}, new_state}, %{}, metadata}
 
           {:error, reason} ->
-            Logger.warning("[BeamLens] Agent failed: #{inspect(reason)}")
-            {{{:error, reason}, state}, %{}, %{node: node, error: reason}}
+            Logger.warning("[BeamLens] Agent failed: #{inspect(reason)}",
+              trace_id: trace_id
+            )
+
+            {{{:error, reason}, state}, %{}, %{node: node, trace_id: trace_id, error: reason}}
         end
       end)
 
