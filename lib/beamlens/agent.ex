@@ -1,86 +1,137 @@
 defmodule Beamlens.Agent do
   @moduledoc """
-  BAML-based agent that analyzes BEAM health.
+  BAML-based agent that analyzes BEAM health using a tool-calling loop.
 
-  Uses Claude Haiku via BAML to interpret VM metrics and provide
-  structured health assessments with type-safe outputs.
+  Uses Claude Haiku via BAML to iteratively gather VM metrics and produce
+  structured health assessments. The agent selects which tools to call
+  and accumulates context until it generates a final report.
+
+  ## Architecture
+
+  The agent loop:
+  1. Calls `SelectTool` BAML function with conversation history
+  2. Pattern matches on the `intent` field to determine which tool was selected
+  3. Executes the tool and adds result to context
+  4. Repeats until agent calls `done` with a HealthReport
+
+  Uses `Strider.Context` for immutable conversation history management.
   """
 
   require Logger
 
-  alias Beamlens.Baml.AnalyzeBeamHealth
-  alias Beamlens.Baml.BeamMetrics
-  alias Beamlens.Baml.MemoryStats
+  alias Strider.Context
+  alias Beamlens.Baml.SelectTool
+  alias Beamlens.Baml.Message
+
+  @default_max_iterations 10
 
   @doc """
-  Run a health analysis.
+  Run a health analysis using the agent loop.
 
-  Collects current BEAM metrics and sends them to Claude Haiku
-  for analysis. Returns a structured `HealthReport`.
+  The agent will iteratively select tools to gather information,
+  then generate a final health report.
 
   ## Options
 
-    * `:stream` - If true, streams partial results (default: false)
+    * `:max_iterations` - Maximum tool calls before forcing completion (default: 10)
 
   ## Examples
 
       {:ok, report} = Beamlens.Agent.run()
       report.status
       #=> "healthy"
-      report.summary
-      #=> "BEAM VM is operating normally with healthy memory usage..."
-      report.concerns
-      #=> []
   """
-  def run(_opts \\ []) do
-    metrics = collect_metrics()
+  def run(opts \\ []) do
+    max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
 
-    case AnalyzeBeamHealth.call(%{metrics: metrics}, %{}) do
-      {:ok, report} ->
-        {:ok, report}
+    context =
+      Context.new(
+        metadata: %{
+          started_at: DateTime.utc_now(),
+          node: Node.self()
+        }
+      )
+
+    loop(context, max_iterations)
+  end
+
+  # Loop terminates when max iterations reached
+  defp loop(_context, 0) do
+    Logger.warning("[BeamLens] Agent reached max iterations without completing")
+    {:error, :max_iterations_exceeded}
+  end
+
+  defp loop(context, remaining) do
+    messages = context |> Context.messages() |> format_for_baml()
+
+    case SelectTool.call(%{messages: messages}, %{}) do
+      {:ok, tool_response} ->
+        Logger.debug("[BeamLens] Agent selected: #{inspect(tool_response.intent)}")
+        execute_tool(tool_response, context, remaining - 1)
 
       {:error, reason} = error ->
-        Logger.warning("[BeamLens] Agent failed: #{inspect(reason)}")
+        Logger.warning("[BeamLens] SelectTool failed: #{inspect(reason)}")
         error
     end
   end
 
-  @doc """
-  Run analysis with streaming partial results.
+  # Dispatch on the `intent` field (pattern from BAML docs)
 
-  Calls the provided callback with partial results as they stream in.
-
-  ## Examples
-
-      {:ok, report} = Beamlens.Agent.run_stream(fn partial ->
-        IO.puts("Partial: \#{inspect(partial)}")
-      end)
-  """
-  def run_stream(callback, _opts \\ []) do
-    metrics = collect_metrics()
-
-    AnalyzeBeamHealth.sync_stream(%{metrics: metrics}, callback, %{})
+  defp execute_tool(%{intent: "done", report: report}, _context, _remaining) do
+    Logger.info("[BeamLens] Agent completed with status: #{report.status}")
+    {:ok, report}
   end
 
-  # Collect metrics and convert to BAML struct format
-  defp collect_metrics do
-    raw = Beamlens.Collector.beam_metrics()
+  defp execute_tool(%{intent: "get_system_info"}, context, remaining) do
+    result = Beamlens.Collector.system_info()
+    continue(context, "get_system_info", result, remaining)
+  end
 
-    %BeamMetrics{
-      node: raw.node,
-      otp_release: raw.otp_release,
-      schedulers_online: raw.schedulers_online,
-      memory: %MemoryStats{
-        total_mb: raw.memory.total_mb,
-        processes_mb: raw.memory.processes_mb,
-        atom_mb: raw.memory.atom_mb,
-        binary_mb: raw.memory.binary_mb,
-        ets_mb: raw.memory.ets_mb
-      },
-      process_count: raw.process_count,
-      port_count: raw.port_count,
-      uptime_seconds: raw.uptime_seconds,
-      run_queue: raw.run_queue
-    }
+  defp execute_tool(%{intent: "get_memory_stats"}, context, remaining) do
+    result = Beamlens.Collector.memory_stats()
+    continue(context, "get_memory_stats", result, remaining)
+  end
+
+  defp execute_tool(%{intent: "get_process_stats"}, context, remaining) do
+    result = Beamlens.Collector.process_stats()
+    continue(context, "get_process_stats", result, remaining)
+  end
+
+  defp execute_tool(%{intent: "get_scheduler_stats"}, context, remaining) do
+    result = Beamlens.Collector.scheduler_stats()
+    continue(context, "get_scheduler_stats", result, remaining)
+  end
+
+  defp execute_tool(%{intent: "get_atom_stats"}, context, remaining) do
+    result = Beamlens.Collector.atom_stats()
+    continue(context, "get_atom_stats", result, remaining)
+  end
+
+  defp execute_tool(%{intent: "get_persistent_terms"}, context, remaining) do
+    result = Beamlens.Collector.persistent_terms()
+    continue(context, "get_persistent_terms", result, remaining)
+  end
+
+  defp execute_tool(unknown, _context, _remaining) do
+    Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}")
+    {:error, {:unknown_tool, unknown}}
+  end
+
+  defp continue(context, tool_name, result, remaining) do
+    Logger.debug("[BeamLens] Tool #{tool_name} returned: #{inspect(result)}")
+
+    context
+    |> Context.add_message(:tool, Jason.encode!(result), %{tool: tool_name})
+    |> loop(remaining)
+  end
+
+  # Convert Strider.Context messages to BAML Message format
+  defp format_for_baml(messages) do
+    Enum.map(messages, fn msg ->
+      %Message{
+        role: to_string(msg.role),
+        content: msg.content
+      }
+    end)
   end
 end

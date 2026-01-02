@@ -8,56 +8,61 @@ client<llm> Haiku {
   }
 }
 
-class BeamMetrics {
-  node string @description("Node name, e.g., 'nonode@nohost'")
-  otp_release string
-  schedulers_online int
-  memory MemoryStats
-  process_count int
-  port_count int
-  uptime_seconds int
-  run_queue int
-}
-
-class MemoryStats {
-  total_mb float
-  processes_mb float
-  atom_mb float
-  binary_mb float
-  ets_mb float
-}
-
 class HealthReport {
   status string @description("Overall status: healthy, warning, or critical")
   summary string @description("Brief 1-2 sentence summary")
   concerns string[] @description("List of any concerns found, empty if none")
-  metrics_snapshot BeamMetrics @description("The metrics that were analyzed")
+  recommendations string[] @description("Actionable recommendations, empty if none")
 }
 
-function AnalyzeBeamHealth(metrics: BeamMetrics) -> HealthReport {
+// Tool classes with intent literals for disambiguation (per BAML docs pattern)
+
+class GetSystemInfo {
+  intent "get_system_info" @description("Get basic node context")
+}
+
+class GetMemoryStats {
+  intent "get_memory_stats" @description("Get detailed memory statistics for leak detection")
+}
+
+class GetProcessStats {
+  intent "get_process_stats" @description("Get process/port counts and limits for capacity check")
+}
+
+class GetSchedulerStats {
+  intent "get_scheduler_stats" @description("Get scheduler details and run queues for performance analysis")
+}
+
+class GetAtomStats {
+  intent "get_atom_stats" @description("Get atom table metrics when suspecting atom leaks")
+}
+
+class GetPersistentTerms {
+  intent "get_persistent_terms" @description("Get persistent term usage statistics")
+}
+
+class Done {
+  intent "done"
+  report HealthReport @description("Final health report")
+}
+
+class Message {
+  role string @description("assistant or tool")
+  content string @description("JSON content")
+}
+
+// Union type - LLM picks exactly one tool
+function SelectTool(messages: Message[]) -> GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | Done {
   client Haiku
   prompt #"
-    You are a BEAM VM health analyst. Analyze these metrics and provide a health report.
+    You are a BEAM VM health analyst. Analyze the BEAM VM and produce a health report.
 
-    Current BEAM VM Metrics:
-    - OTP Release: {{ metrics.otp_release }}
-    - Schedulers Online: {{ metrics.schedulers_online }}
-    - Memory:
-      - Total: {{ metrics.memory.total_mb }} MB
-      - Processes: {{ metrics.memory.processes_mb }} MB
-      - Atoms: {{ metrics.memory.atom_mb }} MB
-      - Binaries: {{ metrics.memory.binary_mb }} MB
-      - ETS: {{ metrics.memory.ets_mb }} MB
-    - Process Count: {{ metrics.process_count }}
-    - Port Count: {{ metrics.port_count }}
-    - Uptime: {{ metrics.uptime_seconds }} seconds
-    - Run Queue: {{ metrics.run_queue }}
+    Conversation so far:
+    {% for msg in messages %}
+    [{{ msg.role }}]: {{ msg.content }}
+    {% endfor %}
 
-    Evaluation criteria:
-    - run_queue > 0 indicates scheduler backpressure (warning if > 1, critical if > schedulers)
-    - Process count should typically be < 100,000 for most apps
-    - Memory growth patterns (if available from context)
-
+    Select your next action:
     {{ ctx.output_format }}
   "#
 }
