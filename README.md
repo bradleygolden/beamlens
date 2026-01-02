@@ -68,6 +68,29 @@ report.metrics_snapshot  #=> %Beamlens.Baml.BeamMetrics{...}
 {:ok, report} = Beamlens.last_report()
 ```
 
+## Telemetry
+
+BeamLens emits telemetry events for observability:
+
+| Event | Description |
+|-------|-------------|
+| `[:beamlens, :agent, :start]` | Agent run starting |
+| `[:beamlens, :agent, :stop]` | Agent run completed |
+| `[:beamlens, :agent, :exception]` | Agent run failed |
+
+### Example handler
+
+```elixir
+:telemetry.attach("my-handler", [:beamlens, :agent, :stop],
+  fn _event, %{duration: duration}, %{status: status, report: report}, _config ->
+    Logger.info("BeamLens: #{status} in #{duration}ns")
+
+    if status == :critical do
+      MyApp.Alerts.send(report.summary)
+    end
+  end, nil)
+```
+
 ## What it monitors
 
 BeamLens gathers safe, read-only VM metrics:

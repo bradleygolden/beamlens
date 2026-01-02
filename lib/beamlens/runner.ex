@@ -39,21 +39,28 @@ defmodule Beamlens.Runner do
 
   @impl true
   def handle_info(:run, state) do
-    new_state =
-      case Beamlens.Agent.run() do
-        {:ok, report} ->
-          Logger.info("[BeamLens] Health Report:\n#{report}")
+    node = Atom.to_string(Node.self())
 
-          %{
-            state
-            | last_report: report,
-              last_run_at: DateTime.utc_now()
-          }
+    {_result, new_state} =
+      Beamlens.Telemetry.span(%{node: node}, fn ->
+        case Beamlens.Agent.run() do
+          {:ok, report} ->
+            Logger.info("[BeamLens] Health Report: #{report.status}")
 
-        {:error, reason} ->
-          Logger.warning("[BeamLens] Health check failed: #{inspect(reason)}")
-          state
-      end
+            metadata = %{
+              node: node,
+              status: Beamlens.Telemetry.status_from_report(report),
+              report: report
+            }
+
+            new_state = %{state | last_report: report, last_run_at: DateTime.utc_now()}
+            {{{:ok, report}, new_state}, %{}, metadata}
+
+          {:error, reason} ->
+            Logger.warning("[BeamLens] Agent failed: #{inspect(reason)}")
+            {{{:error, reason}, state}, %{}, %{node: node, error: reason}}
+        end
+      end)
 
     schedule_run(state.interval)
     {:noreply, new_state}
