@@ -16,6 +16,7 @@ defmodule Beamlens.Collector do
     memory = :erlang.memory()
 
     %{
+      node: Atom.to_string(Node.self()),
       otp_release: to_string(:erlang.system_info(:otp_release)),
       schedulers_online: :erlang.system_info(:schedulers_online),
       memory: %{

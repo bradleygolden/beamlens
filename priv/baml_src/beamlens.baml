@@ -9,6 +9,7 @@ client<llm> Haiku {
 }
 
 class BeamMetrics {
+  node string @description("Node name, e.g., 'nonode@nohost'")
   otp_release string
   schedulers_online int
   memory MemoryStats

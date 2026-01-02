@@ -5,6 +5,7 @@ defmodule BeamlensTest do
     test "beam_metrics returns expected structure" do
       metrics = Beamlens.Collector.beam_metrics()
 
+      assert is_binary(metrics.node)
       assert is_binary(metrics.otp_release)
       assert is_integer(metrics.schedulers_online)
       assert metrics.schedulers_online > 0
@@ -33,7 +34,8 @@ defmodule BeamlensTest do
       assert Map.keys(m1) == Map.keys(m2)
       assert Map.keys(m1.memory) == Map.keys(m2.memory)
 
-      # OTP release shouldn't change
+      # Static values shouldn't change
+      assert m1.node == m2.node
       assert m1.otp_release == m2.otp_release
       assert m1.schedulers_online == m2.schedulers_online
     end

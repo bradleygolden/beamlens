@@ -67,6 +67,7 @@ defmodule Beamlens.Agent do
     raw = Beamlens.Collector.beam_metrics()
 
     %BeamMetrics{
+      node: raw.node,
       otp_release: raw.otp_release,
       schedulers_online: raw.schedulers_online,
       memory: %MemoryStats{
