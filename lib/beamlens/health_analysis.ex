@@ -1,6 +1,6 @@
-defmodule Beamlens.HealthReport do
+defmodule Beamlens.HealthAnalysis do
   @moduledoc """
-  Structured health report from BeamLens agent.
+  Structured health analysis from BeamLens agent.
   """
 
   @type status :: :healthy | :warning | :critical

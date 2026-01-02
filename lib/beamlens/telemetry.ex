@@ -20,7 +20,7 @@ defmodule Beamlens.Telemetry do
 
   * `node` - Node name as string
   * `status` - `:healthy`, `:warning`, or `:critical`
-  * `report` - Full `HealthReport` struct
+  * `analysis` - Full `HealthAnalysis` struct
 
   ## Example Handler
 
@@ -28,7 +28,7 @@ defmodule Beamlens.Telemetry do
         "beamlens-alerts",
         [:beamlens, :agent, :stop],
         fn _event, _measurements, %{status: :critical} = metadata, _config ->
-          Logger.error("BeamLens critical: \#{metadata.report.summary}")
+          Logger.error("BeamLens critical: \#{metadata.analysis.summary}")
         end,
         nil
       )

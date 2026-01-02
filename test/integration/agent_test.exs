@@ -17,14 +17,14 @@ defmodule Beamlens.Integration.AgentTest do
 
   describe "Agent.run/1 with Ollama" do
     @tag timeout: 120_000
-    test "runs agent loop and returns health report" do
-      {:ok, report} = Beamlens.Agent.run(llm_client: "Ollama", max_iterations: 10)
+    test "runs agent loop and returns health analysis" do
+      {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama", max_iterations: 10)
 
-      assert %Beamlens.HealthReport{} = report
-      assert report.status in [:healthy, :warning, :critical]
-      assert is_binary(report.summary)
-      assert is_list(report.concerns)
-      assert is_list(report.recommendations)
+      assert %Beamlens.HealthAnalysis{} = analysis
+      assert analysis.status in [:healthy, :warning, :critical]
+      assert is_binary(analysis.summary)
+      assert is_list(analysis.concerns)
+      assert is_list(analysis.recommendations)
     end
   end
 

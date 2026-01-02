@@ -1,7 +1,7 @@
-defmodule Beamlens.HealthReportTest do
+defmodule Beamlens.HealthAnalysisTest do
   use ExUnit.Case
 
-  alias Beamlens.HealthReport
+  alias Beamlens.HealthAnalysis
 
   describe "schema/0" do
     test "parses valid BAML output with healthy status" do
@@ -12,12 +12,12 @@ defmodule Beamlens.HealthReportTest do
         recommendations: []
       }
 
-      assert {:ok, report} = Zoi.parse(HealthReport.schema(), baml_output)
-      assert %HealthReport{} = report
-      assert report.status == :healthy
-      assert report.summary == "BEAM VM is operating normally"
-      assert report.concerns == []
-      assert report.recommendations == []
+      assert {:ok, analysis} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+      assert %HealthAnalysis{} = analysis
+      assert analysis.status == :healthy
+      assert analysis.summary == "BEAM VM is operating normally"
+      assert analysis.concerns == []
+      assert analysis.recommendations == []
     end
 
     test "parses valid BAML output with warning status" do
@@ -28,9 +28,9 @@ defmodule Beamlens.HealthReportTest do
         recommendations: ["Consider increasing memory allocation"]
       }
 
-      assert {:ok, report} = Zoi.parse(HealthReport.schema(), baml_output)
-      assert report.status == :warning
-      assert report.concerns == ["Memory usage at 85%"]
+      assert {:ok, analysis} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+      assert analysis.status == :warning
+      assert analysis.concerns == ["Memory usage at 85%"]
     end
 
     test "parses valid BAML output with critical status" do
@@ -41,10 +41,10 @@ defmodule Beamlens.HealthReportTest do
         recommendations: ["Scale horizontally", "Increase process limits"]
       }
 
-      assert {:ok, report} = Zoi.parse(HealthReport.schema(), baml_output)
-      assert report.status == :critical
-      assert length(report.concerns) == 2
-      assert length(report.recommendations) == 2
+      assert {:ok, analysis} = Zoi.parse(HealthAnalysis.schema(), baml_output)
+      assert analysis.status == :critical
+      assert length(analysis.concerns) == 2
+      assert length(analysis.recommendations) == 2
     end
   end
 end

@@ -16,7 +16,7 @@ client<llm> Ollama {
   }
 }
 
-class HealthReport {
+class HealthAnalysis {
   status string @description("Overall status: healthy, warning, or critical")
   summary string @description("Brief 1-2 sentence summary")
   concerns string[] @description("List of any concerns found, empty if none")
@@ -51,7 +51,7 @@ class GetPersistentTerms {
 
 class Done {
   intent "done"
-  report HealthReport @description("Final health report")
+  analysis HealthAnalysis @description("Final health analysis")
 }
 
 class Message {
@@ -63,7 +63,7 @@ class Message {
 function SelectTool(messages: Message[]) -> GetSystemInfo | GetMemoryStats | GetProcessStats | GetSchedulerStats | GetAtomStats | GetPersistentTerms | Done {
   client Haiku
   prompt #"
-    You are a BEAM VM health analyst. Analyze the BEAM VM and produce a health report.
+    You are a BEAM VM health analyst. Analyze the BEAM VM and produce a health analysis.
 
     Conversation so far:
     {% for msg in messages %}

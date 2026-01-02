@@ -1,4 +1,4 @@
-A runtime AI agent that monitors BEAM application health and generates actionable reports.
+A runtime AI agent that monitors BEAM application health and generates actionable analyses.
 
 ## Rules
 

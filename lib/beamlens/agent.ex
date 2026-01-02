@@ -4,7 +4,7 @@ defmodule Beamlens.Agent do
 
   Uses Claude Haiku via BAML to iteratively gather VM metrics and produce
   structured health assessments. The agent selects which tools to call
-  and accumulates context until it generates a final report.
+  and accumulates context until it generates a final analysis.
 
   ## Architecture
 
@@ -12,7 +12,7 @@ defmodule Beamlens.Agent do
   1. Calls `SelectTool` BAML function with conversation history
   2. Pattern matches on tool struct type to determine which tool was selected
   3. Executes the tool and adds result to context
-  4. Repeats until agent selects `Done` with a HealthReport
+  4. Repeats until agent selects `Done` with a HealthAnalysis
 
   Uses `Strider.Agent` for LLM configuration and `Strider.Context` for
   immutable conversation history management.
@@ -29,7 +29,7 @@ defmodule Beamlens.Agent do
   Run a health analysis using the agent loop.
 
   The agent will iteratively select tools to gather information,
-  then generate a final health report.
+  then generate a final health analysis.
 
   ## Options
 
@@ -38,12 +38,12 @@ defmodule Beamlens.Agent do
 
   ## Examples
 
-      {:ok, report} = Beamlens.Agent.run()
-      report.status
+      {:ok, analysis} = Beamlens.Agent.run()
+      analysis.status
       #=> :healthy
 
       # Use local Ollama model
-      {:ok, report} = Beamlens.Agent.run(llm_client: "Ollama")
+      {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama")
   """
   def run(opts \\ []) do
     max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
@@ -88,9 +88,9 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_tool(%Tools.Done{report: report}, _agent, _context, _remaining) do
-    Logger.info("[BeamLens] Agent completed with status: #{report.status}")
-    {:ok, report}
+  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, _context, _remaining) do
+    Logger.info("[BeamLens] Agent completed with status: #{analysis.status}")
+    {:ok, analysis}
   end
 
   defp execute_tool(%Tools.GetSystemInfo{}, agent, context, remaining) do

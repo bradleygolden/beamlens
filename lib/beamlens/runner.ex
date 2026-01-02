@@ -38,17 +38,17 @@ defmodule Beamlens.Runner do
     {_result, new_state} =
       Beamlens.Telemetry.span(%{node: node}, fn ->
         case Beamlens.Agent.run() do
-          {:ok, report} ->
-            Logger.info("[BeamLens] Health Report: #{report.status}")
+          {:ok, analysis} ->
+            Logger.info("[BeamLens] Health Analysis: #{analysis.status}")
 
             metadata = %{
               node: node,
-              status: report.status,
-              report: report
+              status: analysis.status,
+              analysis: analysis
             }
 
             new_state = %{state | last_run_at: DateTime.utc_now()}
-            {{{:ok, report}, new_state}, %{}, metadata}
+            {{{:ok, analysis}, new_state}, %{}, metadata}
 
           {:error, reason} ->
             Logger.warning("[BeamLens] Agent failed: #{inspect(reason)}")

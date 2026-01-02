@@ -1,12 +1,12 @@
 # BeamLens
 
-A minimal, safe AI agent that monitors BEAM VM health and generates reports using Claude Haiku.
+A minimal, safe AI agent that monitors BEAM VM health and generates analyses using Claude Haiku.
 
 ## Features
 
 - **Safe by design**: Read-only metrics, no PII/PHI exposure, zero side effects
 - **Pure Elixir**: Uses [Strider](https://github.com/bradleygolden/strider) + [BAML](https://github.com/boundaryml/baml) for type-safe LLM calls
-- **Structured output**: Returns typed `HealthReport` structs, not raw text
+- **Structured output**: Returns typed `HealthAnalysis` structs, not raw text
 - **Periodic monitoring**: Runs health checks at configurable intervals
 - **Claude-powered analysis**: Uses Haiku for cost-effective, intelligent analysis
 
@@ -54,12 +54,12 @@ end
 ### Manual analysis
 
 ```elixir
-{:ok, report} = Beamlens.run()
+{:ok, analysis} = Beamlens.run()
 
-report.status          #=> :healthy
-report.summary         #=> "BEAM VM is operating normally..."
-report.concerns        #=> []
-report.recommendations #=> []
+analysis.status          #=> :healthy
+analysis.summary         #=> "BEAM VM is operating normally..."
+analysis.concerns        #=> []
+analysis.recommendations #=> []
 ```
 
 ## Telemetry
@@ -76,11 +76,11 @@ BeamLens emits telemetry events for observability:
 
 ```elixir
 :telemetry.attach("my-handler", [:beamlens, :agent, :stop],
-  fn _event, %{duration: duration}, %{status: status, report: report}, _config ->
+  fn _event, %{duration: duration}, %{status: status, analysis: analysis}, _config ->
     Logger.info("BeamLens: #{status} in #{duration}ns")
 
     if status == :critical do
-      MyApp.Alerts.send(report.summary)
+      MyApp.Alerts.send(analysis.summary)
     end
   end, nil)
 ```

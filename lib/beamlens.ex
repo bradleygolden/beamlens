@@ -2,7 +2,7 @@ defmodule Beamlens do
   @moduledoc """
   BeamLens - A minimal AI agent that monitors BEAM VM health.
 
-  Periodically analyzes BEAM metrics and generates health reports
+  Periodically analyzes BEAM metrics and generates health analyses
   using Claude Haiku. Safe by design: read-only, no PII/PHI exposure.
 
   ## Usage
@@ -11,7 +11,7 @@ defmodule Beamlens do
       {Beamlens, []}
 
       # Or run manually
-      {:ok, report} = Beamlens.run()
+      {:ok, analysis} = Beamlens.run()
 
   ## Configuration
 
@@ -27,7 +27,7 @@ defmodule Beamlens do
   @doc """
   Manually trigger a health analysis.
 
-  Returns `{:ok, report}` where report is the AI-generated health assessment.
+  Returns `{:ok, analysis}` where analysis is the AI-generated health assessment.
   """
   defdelegate run(opts \\ []), to: Beamlens.Agent
 

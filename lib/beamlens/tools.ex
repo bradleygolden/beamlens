@@ -38,7 +38,7 @@ defmodule Beamlens.Tools do
 
   defmodule Done do
     @moduledoc false
-    defstruct [:intent, :report]
+    defstruct [:intent, :analysis]
   end
 
   @doc """
@@ -66,7 +66,7 @@ defmodule Beamlens.Tools do
   defp done_schema do
     Zoi.object(%{
       intent: Zoi.literal("done"),
-      report: Beamlens.HealthReport.schema()
+      analysis: Beamlens.HealthAnalysis.schema()
     })
     |> Zoi.transform(fn data -> {:ok, struct!(Done, data)} end)
   end
