@@ -22,12 +22,11 @@ defmodule Beamlens.MixProject do
 
   defp deps do
     [
-      {:strider, github: "bradleygolden/strider"},
+      {:strider, github: "bradleygolden/strider", ref: "28c077c"},
       {:jason, "~> 1.4"},
-      # BAML for type-safe LLM functions
+      {:zoi, "~> 0.12"},
       {:baml_elixir, "~> 1.0.0-pre.23"},
-      # Required for strider compilation (sandbox store) - can be removed when strider fixes optional deps
-      {:ecto_sql, "~> 3.0", runtime: false}
+      {:telemetry, "~> 1.2"}
     ]
   end
 

@@ -8,6 +8,14 @@ client<llm> Haiku {
   }
 }
 
+client<llm> Ollama {
+  provider "openai-generic"
+  options {
+    base_url "http://localhost:11434/v1"
+    model "qwen3:1.7b"
+  }
+}
+
 class HealthReport {
   status string @description("Overall status: healthy, warning, or critical")
   summary string @description("Brief 1-2 sentence summary")

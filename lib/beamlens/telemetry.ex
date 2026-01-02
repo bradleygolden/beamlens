@@ -38,12 +38,4 @@ defmodule Beamlens.Telemetry do
   def span(metadata, fun) do
     :telemetry.span([:beamlens, :agent], metadata, fun)
   end
-
-  @doc """
-  Extracts status atom from report.
-  """
-  def status_from_report(%{status: "healthy"}), do: :healthy
-  def status_from_report(%{status: "warning"}), do: :warning
-  def status_from_report(%{status: "critical"}), do: :critical
-  def status_from_report(_), do: :unknown
 end

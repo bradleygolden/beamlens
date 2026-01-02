@@ -56,16 +56,10 @@ end
 ```elixir
 {:ok, report} = Beamlens.run()
 
-report.status    #=> "healthy"
-report.summary   #=> "BEAM VM is operating normally..."
-report.concerns  #=> []
-report.metrics_snapshot  #=> %Beamlens.Baml.BeamMetrics{...}
-```
-
-### View last report
-
-```elixir
-{:ok, report} = Beamlens.last_report()
+report.status          #=> :healthy
+report.summary         #=> "BEAM VM is operating normally..."
+report.concerns        #=> []
+report.recommendations #=> []
 ```
 
 ## Telemetry

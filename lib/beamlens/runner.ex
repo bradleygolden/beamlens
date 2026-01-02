@@ -20,7 +20,6 @@ defmodule Beamlens.Runner do
     state = %{
       interval: interval,
       mode: mode,
-      last_report: nil,
       last_run_at: nil
     }
 
@@ -30,11 +29,6 @@ defmodule Beamlens.Runner do
     end
 
     {:ok, state}
-  end
-
-  @impl true
-  def handle_call(:last_report, _from, state) do
-    {:reply, {:ok, state.last_report}, state}
   end
 
   @impl true
@@ -49,11 +43,11 @@ defmodule Beamlens.Runner do
 
             metadata = %{
               node: node,
-              status: Beamlens.Telemetry.status_from_report(report),
+              status: report.status,
               report: report
             }
 
-            new_state = %{state | last_report: report, last_run_at: DateTime.utc_now()}
+            new_state = %{state | last_run_at: DateTime.utc_now()}
             {{{:ok, report}, new_state}, %{}, metadata}
 
           {:error, reason} ->

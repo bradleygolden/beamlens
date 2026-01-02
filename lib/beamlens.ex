@@ -32,17 +32,6 @@ defmodule Beamlens do
   defdelegate run(opts \\ []), to: Beamlens.Agent
 
   @doc """
-  Get the last report from the runner (if running in periodic mode).
-  """
-  def last_report do
-    if Process.whereis(Beamlens.Runner) do
-      GenServer.call(Beamlens.Runner, :last_report)
-    else
-      {:error, :runner_not_started}
-    end
-  end
-
-  @doc """
   Returns a child spec for adding Beamlens to a supervision tree.
   """
   def child_spec(opts) do

@@ -1,26 +1,6 @@
 defmodule Beamlens.TelemetryTest do
   use ExUnit.Case
 
-  describe "status_from_report/1" do
-    test "returns :healthy for healthy status" do
-      assert Beamlens.Telemetry.status_from_report(%{status: "healthy"}) == :healthy
-    end
-
-    test "returns :warning for warning status" do
-      assert Beamlens.Telemetry.status_from_report(%{status: "warning"}) == :warning
-    end
-
-    test "returns :critical for critical status" do
-      assert Beamlens.Telemetry.status_from_report(%{status: "critical"}) == :critical
-    end
-
-    test "returns :unknown for unrecognized status" do
-      assert Beamlens.Telemetry.status_from_report(%{status: "other"}) == :unknown
-      assert Beamlens.Telemetry.status_from_report(%{}) == :unknown
-      assert Beamlens.Telemetry.status_from_report(nil) == :unknown
-    end
-  end
-
   describe "span/2" do
     test "emits start and stop events" do
       ref = make_ref()
