@@ -30,6 +30,7 @@ defmodule Beamlens.Agent do
   alias Beamlens.{Telemetry, Tools}
 
   @default_max_iterations 10
+  @default_timeout :timer.seconds(60)
 
   @doc """
   Run a health analysis using the agent loop.
@@ -42,6 +43,7 @@ defmodule Beamlens.Agent do
     * `:client_registry` - LLM client configuration (see example below)
     * `:max_iterations` - Maximum tool calls before forcing completion (default: 10)
     * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
+    * `:timeout` - Timeout in milliseconds for each LLM call (default: 60000)
 
   ## Examples
 
@@ -65,6 +67,7 @@ defmodule Beamlens.Agent do
   """
   def run(opts \\ []) do
     max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
     llm_client = Keyword.get(opts, :llm_client)
     client_registry = Keyword.get(opts, :client_registry)
     trace_id = Keyword.get(opts, :trace_id, Telemetry.generate_trace_id())
@@ -95,10 +98,10 @@ defmodule Beamlens.Agent do
         }
       )
 
-    loop(agent, context, max_iterations)
+    loop(agent, context, max_iterations, timeout)
   end
 
-  defp loop(_agent, context, 0) do
+  defp loop(_agent, context, 0, _timeout) do
     Logger.warning("[BeamLens] Agent reached max iterations without completing",
       trace_id: context.metadata.trace_id
     )
@@ -106,14 +109,21 @@ defmodule Beamlens.Agent do
     {:error, :max_iterations_exceeded}
   end
 
-  defp loop(agent, context, remaining) do
-    case Strider.call(agent, [], context, output_schema: Tools.schema()) do
+  defp loop(agent, context, remaining, timeout) do
+    case call_with_timeout(agent, context, timeout) do
       {:ok, response, new_context} ->
         Logger.debug("[BeamLens] Agent selected: #{inspect(response.content)}",
           trace_id: context.metadata.trace_id
         )
 
-        execute_tool(response.content, agent, new_context, remaining - 1)
+        execute_tool(response.content, agent, new_context, remaining - 1, timeout)
+
+      {:error, :timeout} ->
+        Logger.warning("[BeamLens] LLM call timed out after #{timeout}ms",
+          trace_id: context.metadata.trace_id
+        )
+
+        {:error, :timeout}
 
       {:error, reason} = error ->
         Logger.warning("[BeamLens] SelectTool failed: #{inspect(reason)}",
@@ -124,7 +134,19 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, context, _remaining) do
+  defp call_with_timeout(agent, context, timeout) do
+    task =
+      Task.async(fn ->
+        Strider.call(agent, [], context, output_schema: Tools.schema())
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      nil -> {:error, :timeout}
+    end
+  end
+
+  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, context, _remaining, _timeout) do
     Logger.info("[BeamLens] Agent completed with status: #{analysis.status}",
       trace_id: context.metadata.trace_id,
       tool_count: context.metadata.tool_count
@@ -133,73 +155,79 @@ defmodule Beamlens.Agent do
     {:ok, analysis}
   end
 
-  defp execute_tool(%Tools.GetSystemInfo{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetSystemInfo{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_system_info",
       intent,
       &Beamlens.Collector.system_info/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(%Tools.GetMemoryStats{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetMemoryStats{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_memory_stats",
       intent,
       &Beamlens.Collector.memory_stats/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(%Tools.GetProcessStats{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetProcessStats{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_process_stats",
       intent,
       &Beamlens.Collector.process_stats/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(%Tools.GetSchedulerStats{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetSchedulerStats{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_scheduler_stats",
       intent,
       &Beamlens.Collector.scheduler_stats/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(%Tools.GetAtomStats{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetAtomStats{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_atom_stats",
       intent,
       &Beamlens.Collector.atom_stats/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(%Tools.GetPersistentTerms{intent: intent}, agent, context, remaining) do
+  defp execute_tool(%Tools.GetPersistentTerms{intent: intent}, agent, context, remaining, timeout) do
     execute_and_continue(
       agent,
       context,
       "get_persistent_terms",
       intent,
       &Beamlens.Collector.persistent_terms/0,
-      remaining
+      remaining,
+      timeout
     )
   end
 
-  defp execute_tool(unknown, _agent, context, _remaining) do
+  defp execute_tool(unknown, _agent, context, _remaining, _timeout) do
     Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}",
       trace_id: context.metadata.trace_id
     )
@@ -207,7 +235,7 @@ defmodule Beamlens.Agent do
     {:error, {:unknown_tool, unknown}}
   end
 
-  defp execute_and_continue(agent, context, tool_name, intent, tool_fn, remaining) do
+  defp execute_and_continue(agent, context, tool_name, intent, tool_fn, remaining, timeout) do
     trace_metadata = %{
       trace_id: context.metadata.trace_id,
       iteration: context.metadata.iteration,
@@ -227,7 +255,7 @@ defmodule Beamlens.Agent do
       |> increment_iteration()
       |> increment_tool_count()
 
-    loop(agent, new_context, remaining)
+    loop(agent, new_context, remaining, timeout)
   end
 
   defp add_tool_message(context, content, metadata) do
