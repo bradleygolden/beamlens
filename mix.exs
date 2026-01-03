@@ -25,7 +25,13 @@ defmodule Beamlens.MixProject do
       {:strider, github: "bradleygolden/strider", ref: "28c077c"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.12"},
-      {:baml_elixir, "~> 1.0.0-pre.23"},
+      # TODO: Switch back to hex.pm once ClientRegistry is released
+      # {:baml_elixir, "~> 1.0.0-pre.24"},
+      {:baml_elixir,
+       github: "emilsoman/baml_elixir",
+       ref: "51fdb81640230dd14b4556c1d078bce8d8218368",
+       override: true},
+      {:rustler, "~> 0.36", optional: true},
       {:telemetry, "~> 1.2"}
     ]
   end

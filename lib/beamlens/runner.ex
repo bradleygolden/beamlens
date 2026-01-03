@@ -11,22 +11,20 @@ defmodule Beamlens.Runner do
 
   alias Beamlens.Telemetry
 
+  defstruct interval: :timer.minutes(5),
+            mode: :periodic,
+            client_registry: nil,
+            last_run_at: nil
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @impl true
   def init(opts) do
-    interval = opts[:interval] || :timer.minutes(5)
-    mode = opts[:mode] || :periodic
+    state = struct!(__MODULE__, opts)
 
-    state = %{
-      interval: interval,
-      mode: mode,
-      last_run_at: nil
-    }
-
-    if mode != :manual do
+    if state.mode != :manual do
       schedule_run(5_000)
     end
 
@@ -34,13 +32,13 @@ defmodule Beamlens.Runner do
   end
 
   @impl true
-  def handle_info(:run, state) do
+  def handle_info(:run, %{client_registry: client_registry} = state) do
     node = Atom.to_string(Node.self())
     trace_id = Telemetry.generate_trace_id()
 
     {_result, new_state} =
       Telemetry.span(%{node: node, trace_id: trace_id}, fn ->
-        case Beamlens.Agent.run(trace_id: trace_id) do
+        case Beamlens.Agent.run(trace_id: trace_id, client_registry: client_registry) do
           {:ok, analysis} ->
             Logger.info("[BeamLens] Health Analysis: #{analysis.status}",
               trace_id: trace_id

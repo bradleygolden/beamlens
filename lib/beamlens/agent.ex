@@ -39,8 +39,8 @@ defmodule Beamlens.Agent do
 
   ## Options
 
+    * `:client_registry` - LLM client configuration (see example below)
     * `:max_iterations` - Maximum tool calls before forcing completion (default: 10)
-    * `:llm_client` - BAML client name to use (default: "Haiku", or "Ollama" for local)
     * `:trace_id` - Correlation ID for telemetry (auto-generated if not provided)
 
   ## Examples
@@ -49,15 +49,24 @@ defmodule Beamlens.Agent do
       analysis.status
       #=> :healthy
 
-      # Use local Ollama model
-      {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama")
-
-      # Provide custom trace_id
-      {:ok, analysis} = Beamlens.Agent.run(trace_id: "my-trace-123")
+      # Custom LLM provider
+      {:ok, analysis} = Beamlens.Agent.run(
+        client_registry: %{
+          primary: "Bedrock",
+          clients: [
+            %{
+              name: "Bedrock",
+              provider: "aws-bedrock",
+              options: %{model: "anthropic.claude-sonnet-4-5", region: "us-east-1"}
+            }
+          ]
+        }
+      )
   """
   def run(opts \\ []) do
     max_iterations = Keyword.get(opts, :max_iterations, @default_max_iterations)
     llm_client = Keyword.get(opts, :llm_client)
+    client_registry = Keyword.get(opts, :client_registry)
     trace_id = Keyword.get(opts, :trace_id, Telemetry.generate_trace_id())
 
     backend_config =
@@ -67,7 +76,7 @@ defmodule Beamlens.Agent do
         prefix: Beamlens.Baml,
         args_format: :messages
       ]
-      |> maybe_add_llm_client(llm_client)
+      |> maybe_add_client_config(llm_client, client_registry)
 
     agent =
       Strider.Agent.new(
@@ -239,6 +248,14 @@ defmodule Beamlens.Agent do
     put_in(context.metadata.tool_count, context.metadata.tool_count + 1)
   end
 
-  defp maybe_add_llm_client(config, nil), do: config
-  defp maybe_add_llm_client(config, client), do: Keyword.put(config, :llm_client, client)
+  defp maybe_add_client_config(config, nil, nil), do: config
+
+  defp maybe_add_client_config(config, _llm_client, client_registry)
+       when is_map(client_registry) do
+    Keyword.put(config, :client_registry, client_registry)
+  end
+
+  defp maybe_add_client_config(config, llm_client, nil) do
+    Keyword.put(config, :llm_client, llm_client)
+  end
 end
