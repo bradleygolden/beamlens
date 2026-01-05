@@ -77,16 +77,43 @@ def start(_type, _args) do
 end
 ```
 
-Or run manually:
+## Manual Triggering
+
+Run the agent on-demand without scheduling—useful for debugging, one-off checks, or integrating with your own triggers:
 
 ```elixir
-{:ok, analysis} = Beamlens.run(client_registry: client_registry)
+# Configure your LLM provider
+client_registry = %{
+  primary: "Claude",
+  clients: [
+    %{name: "Claude", provider: "anthropic",
+      options: %{model: "claude-haiku-4-5-20251001", api_key: System.get_env("ANTHROPIC_API_KEY")}}
+  ]
+}
 
-analysis.status          #=> :healthy
-analysis.summary         #=> "BEAM VM is operating normally..."
-analysis.concerns        #=> []
-analysis.recommendations #=> []
+# Run the agent
+case Beamlens.run(client_registry: client_registry) do
+  {:ok, analysis} ->
+    IO.puts("Status: #{analysis.status}")
+    IO.puts("Summary: #{analysis.summary}")
+
+    if analysis.concerns != [] do
+      IO.puts("Concerns: #{Enum.join(analysis.concerns, ", ")}")
+    end
+
+  {:error, reason} ->
+    IO.puts("Analysis failed: #{inspect(reason)}")
+end
 ```
+
+The `HealthAnalysis` struct contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `:healthy \| :warning \| :critical` | Overall health status |
+| `summary` | `String.t()` | Brief 1-2 sentence summary |
+| `concerns` | `[String.t()]` | List of identified concerns |
+| `recommendations` | `[String.t()]` | Actionable next steps |
 
 ### Bring Your Own Model
 
