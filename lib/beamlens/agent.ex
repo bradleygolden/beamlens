@@ -19,8 +19,8 @@ defmodule Beamlens.Agent do
 
   The agent loop:
   1. Calls `SelectTool` BAML function with conversation history
-  2. Pattern matches on tool struct type to determine which tool was selected
-  3. Executes the tool and adds result to context
+  2. Finds the tool by intent from configured collectors
+  3. Executes the tool via its bundled execute function
   4. Repeats until agent selects `Done` with a HealthAnalysis
 
   Uses `Strider.Agent` for LLM configuration and `Strider.Context` for
@@ -43,6 +43,8 @@ defmodule Beamlens.Agent do
 
   ## Options
 
+    * `:collectors` - List of collector modules to use for gathering metrics.
+      Defaults to configured collectors or `[Beamlens.Collectors.Beam]`.
     * `:client_registry` - Full LLM client configuration map. When provided,
       takes precedence and `:llm_client` is ignored. See example below.
     * `:llm_client` - LLM client name string (e.g., "Ollama"). Only used
@@ -59,6 +61,11 @@ defmodule Beamlens.Agent do
 
       # Use a different preconfigured client
       {:ok, analysis} = Beamlens.Agent.run(llm_client: "Ollama")
+
+      # Use multiple collectors
+      {:ok, analysis} = Beamlens.Agent.run(
+        collectors: [Beamlens.Collectors.Beam, MyApp.Collectors.Postgres]
+      )
 
       # Custom LLM provider with full configuration
       {:ok, analysis} = Beamlens.Agent.run(
@@ -80,6 +87,9 @@ defmodule Beamlens.Agent do
     llm_client = Keyword.get(opts, :llm_client)
     client_registry = Keyword.get(opts, :client_registry)
     trace_id = Keyword.get(opts, :trace_id, Telemetry.generate_trace_id())
+    collectors = Keyword.get(opts, :collectors, default_collectors())
+
+    tools = collect_tools(collectors)
 
     backend_config =
       [
@@ -107,10 +117,14 @@ defmodule Beamlens.Agent do
         }
       )
 
-    loop(agent, context, max_iterations, timeout)
+    loop(agent, context, max_iterations, timeout, tools)
   end
 
-  defp loop(_agent, context, 0, _timeout) do
+  defp collect_tools(collectors) do
+    Enum.flat_map(collectors, & &1.tools())
+  end
+
+  defp loop(_agent, context, 0, _timeout, _tools) do
     Logger.warning("[BeamLens] Agent reached max iterations without completing",
       trace_id: context.metadata.trace_id
     )
@@ -118,14 +132,14 @@ defmodule Beamlens.Agent do
     {:error, :max_iterations_exceeded}
   end
 
-  defp loop(agent, context, remaining, timeout) do
+  defp loop(agent, context, remaining, timeout, tools) do
     case call_with_timeout(agent, context, timeout) do
       {:ok, response, new_context} ->
         Logger.debug("[BeamLens] Agent selected: #{inspect(response.content)}",
           trace_id: context.metadata.trace_id
         )
 
-        execute_tool(response.content, agent, new_context, remaining - 1, timeout)
+        execute_tool(response.content, agent, new_context, remaining - 1, timeout, tools)
 
       {:error, :timeout} ->
         Logger.warning("[BeamLens] LLM call timed out after #{timeout}ms",
@@ -168,7 +182,14 @@ defmodule Beamlens.Agent do
     end
   end
 
-  defp execute_tool(%Tools.Done{analysis: analysis}, _agent, context, _remaining, _timeout) do
+  defp execute_tool(
+         %Tools.Done{analysis: analysis},
+         _agent,
+         context,
+         _remaining,
+         _timeout,
+         _tools
+       ) do
     Logger.info("[BeamLens] Agent completed with status: #{analysis.status}",
       trace_id: context.metadata.trace_id,
       tool_count: context.metadata.tool_count
@@ -177,79 +198,21 @@ defmodule Beamlens.Agent do
     {:ok, analysis}
   end
 
-  defp execute_tool(%Tools.GetSystemInfo{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_system_info",
-      intent,
-      &Beamlens.Collector.system_info/0,
-      remaining,
-      timeout
-    )
+  defp execute_tool(%{intent: intent}, agent, context, remaining, timeout, tools) do
+    case find_tool(intent, tools) do
+      {:ok, tool} ->
+        execute_and_continue(agent, context, tool, remaining, timeout, tools)
+
+      :error ->
+        Logger.warning("[BeamLens] Unknown tool: #{intent}",
+          trace_id: context.metadata.trace_id
+        )
+
+        {:error, {:unknown_tool, intent}}
+    end
   end
 
-  defp execute_tool(%Tools.GetMemoryStats{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_memory_stats",
-      intent,
-      &Beamlens.Collector.memory_stats/0,
-      remaining,
-      timeout
-    )
-  end
-
-  defp execute_tool(%Tools.GetProcessStats{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_process_stats",
-      intent,
-      &Beamlens.Collector.process_stats/0,
-      remaining,
-      timeout
-    )
-  end
-
-  defp execute_tool(%Tools.GetSchedulerStats{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_scheduler_stats",
-      intent,
-      &Beamlens.Collector.scheduler_stats/0,
-      remaining,
-      timeout
-    )
-  end
-
-  defp execute_tool(%Tools.GetAtomStats{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_atom_stats",
-      intent,
-      &Beamlens.Collector.atom_stats/0,
-      remaining,
-      timeout
-    )
-  end
-
-  defp execute_tool(%Tools.GetPersistentTerms{intent: intent}, agent, context, remaining, timeout) do
-    execute_and_continue(
-      agent,
-      context,
-      "get_persistent_terms",
-      intent,
-      &Beamlens.Collector.persistent_terms/0,
-      remaining,
-      timeout
-    )
-  end
-
-  defp execute_tool(unknown, _agent, context, _remaining, _timeout) do
+  defp execute_tool(unknown, _agent, context, _remaining, _timeout, _tools) do
     Logger.warning("[BeamLens] Unknown tool response: #{inspect(unknown)}",
       trace_id: context.metadata.trace_id
     )
@@ -257,37 +220,50 @@ defmodule Beamlens.Agent do
     {:error, {:unknown_tool, unknown}}
   end
 
-  defp execute_and_continue(agent, context, tool_name, intent, tool_fn, remaining, timeout) do
+  defp find_tool(intent, tools) do
+    case Enum.find(tools, fn tool -> tool.intent == intent end) do
+      nil -> :error
+      tool -> {:ok, tool}
+    end
+  end
+
+  defp execute_and_continue(agent, context, tool, remaining, timeout, tools) do
     trace_metadata = %{
       trace_id: context.metadata.trace_id,
       iteration: context.metadata.iteration,
-      tool_name: tool_name,
-      intent: intent || ""
+      tool_name: tool.intent,
+      intent: tool.intent
     }
 
-    result = Telemetry.tool_span(trace_metadata, tool_fn)
+    Telemetry.emit_tool_start(trace_metadata)
 
-    Logger.debug("[BeamLens] Tool #{tool_name} returned: #{inspect(result)}",
+    result = tool.execute.()
+
+    Logger.debug("[BeamLens] Tool #{tool.intent} returned: #{inspect(result)}",
       trace_id: context.metadata.trace_id
     )
 
     case Jason.encode(result) do
       {:ok, encoded} ->
+        Telemetry.emit_tool_stop(trace_metadata)
+
         new_context =
           context
-          |> add_tool_message(encoded, %{tool: tool_name})
+          |> add_tool_message(encoded, %{tool: tool.intent})
           |> increment_iteration()
           |> increment_tool_count()
 
-        loop(agent, new_context, remaining, timeout)
+        loop(agent, new_context, remaining, timeout, tools)
 
       {:error, reason} ->
+        Telemetry.emit_tool_exception(trace_metadata, reason)
+
         Logger.error("[BeamLens] Failed to encode tool result: #{inspect(reason)}",
           trace_id: context.metadata.trace_id,
-          tool_name: tool_name
+          tool_name: tool.intent
         )
 
-        {:error, {:encoding_failed, tool_name, reason}}
+        {:error, {:encoding_failed, tool.intent, reason}}
     end
   end
 
@@ -307,6 +283,10 @@ defmodule Beamlens.Agent do
 
   defp increment_tool_count(context) do
     put_in(context.metadata.tool_count, context.metadata.tool_count + 1)
+  end
+
+  defp default_collectors do
+    Application.get_env(:beamlens, :collectors, [Beamlens.Collectors.Beam])
   end
 
   defp maybe_add_client_config(config, nil, nil), do: config

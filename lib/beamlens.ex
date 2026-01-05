@@ -34,7 +34,8 @@ defmodule Beamlens do
   Options passed to `Beamlens`:
 
     * `:schedules` - List of schedule configurations (see below)
-    * `:agent_opts` - Global options passed to all agent runs
+    * `:agent_opts` - Global options passed to all agent runs, including:
+      * `:collectors` - List of collector modules (default: `[Beamlens.Collectors.Beam]`)
 
   ### Schedule Configuration
 
@@ -55,7 +56,8 @@ defmodule Beamlens do
         ],
         agent_opts: [
           timeout: 60_000,
-          max_iterations: 10
+          max_iterations: 10,
+          collectors: [Beamlens.Collectors.Beam, MyApp.Collectors.Postgres]
         ]}
 
   ## Manual Usage

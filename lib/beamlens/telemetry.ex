@@ -161,6 +161,39 @@ defmodule Beamlens.Telemetry do
   end
 
   @doc """
+  Emits a tool start event.
+  """
+  def emit_tool_start(metadata) do
+    :telemetry.execute(
+      [:beamlens, :tool, :start],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits a tool stop event.
+  """
+  def emit_tool_stop(metadata) do
+    :telemetry.execute(
+      [:beamlens, :tool, :stop],
+      %{system_time: System.system_time()},
+      metadata
+    )
+  end
+
+  @doc """
+  Emits a tool exception event.
+  """
+  def emit_tool_exception(metadata, error) do
+    :telemetry.execute(
+      [:beamlens, :tool, :exception],
+      %{system_time: System.system_time()},
+      Map.put(metadata, :error, error)
+    )
+  end
+
+  @doc """
   Attaches a default logging handler to all BeamLens telemetry events.
 
   ## Options

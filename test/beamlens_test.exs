@@ -1,6 +1,9 @@
 defmodule BeamlensTest do
   use ExUnit.Case
 
+  alias Beamlens.Collectors.Beam
+  alias Beamlens.Tool
+
   describe "Beamlens.child_spec/1" do
     test "returns valid child spec" do
       spec = Beamlens.child_spec([])
@@ -18,9 +21,34 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.system_info/0" do
-    test "returns expected structure" do
-      info = Beamlens.Collector.system_info()
+  describe "Beam collector tools/0" do
+    test "returns list of 6 Tool structs" do
+      tools = Beam.tools()
+
+      assert length(tools) == 6
+      assert Enum.all?(tools, &match?(%Tool{}, &1))
+      assert Enum.all?(tools, &is_atom(&1.name))
+      assert Enum.all?(tools, &is_binary(&1.intent))
+      assert Enum.all?(tools, &is_binary(&1.description))
+      assert Enum.all?(tools, &is_function(&1.execute, 0))
+    end
+
+    test "each tool has unique intent" do
+      tools = Beam.tools()
+      intents = Enum.map(tools, & &1.intent)
+
+      assert intents == Enum.uniq(intents)
+    end
+  end
+
+  describe "Beam collector - get_system_info tool" do
+    setup do
+      tool = find_tool("get_system_info")
+      %{tool: tool}
+    end
+
+    test "returns expected structure", %{tool: tool} do
+      info = tool.execute.()
 
       assert is_binary(info.node)
       assert is_binary(info.otp_release)
@@ -30,9 +58,9 @@ defmodule BeamlensTest do
       assert info.schedulers_online > 0
     end
 
-    test "is read-only (no side effects)" do
-      i1 = Beamlens.Collector.system_info()
-      i2 = Beamlens.Collector.system_info()
+    test "is read-only (no side effects)", %{tool: tool} do
+      i1 = tool.execute.()
+      i2 = tool.execute.()
 
       assert Map.keys(i1) == Map.keys(i2)
       assert i1.node == i2.node
@@ -42,9 +70,10 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.memory_stats/0" do
+  describe "Beam collector - get_memory_stats tool" do
     test "returns expected structure" do
-      stats = Beamlens.Collector.memory_stats()
+      tool = find_tool("get_memory_stats")
+      stats = tool.execute.()
 
       assert is_float(stats.total_mb)
       assert is_float(stats.processes_mb)
@@ -56,9 +85,10 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.process_stats/0" do
+  describe "Beam collector - get_process_stats tool" do
     test "returns expected structure" do
-      stats = Beamlens.Collector.process_stats()
+      tool = find_tool("get_process_stats")
+      stats = tool.execute.()
 
       assert is_integer(stats.process_count)
       assert is_integer(stats.process_limit)
@@ -69,9 +99,10 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.scheduler_stats/0" do
+  describe "Beam collector - get_scheduler_stats tool" do
     test "returns expected structure" do
-      stats = Beamlens.Collector.scheduler_stats()
+      tool = find_tool("get_scheduler_stats")
+      stats = tool.execute.()
 
       assert is_integer(stats.schedulers)
       assert is_integer(stats.schedulers_online)
@@ -82,9 +113,10 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.atom_stats/0" do
+  describe "Beam collector - get_atom_stats tool" do
     test "returns expected structure" do
-      stats = Beamlens.Collector.atom_stats()
+      tool = find_tool("get_atom_stats")
+      stats = tool.execute.()
 
       assert is_integer(stats.atom_count)
       assert is_integer(stats.atom_limit)
@@ -95,13 +127,18 @@ defmodule BeamlensTest do
     end
   end
 
-  describe "Beamlens.Collector.persistent_terms/0" do
+  describe "Beam collector - get_persistent_terms tool" do
     test "returns expected structure" do
-      stats = Beamlens.Collector.persistent_terms()
+      tool = find_tool("get_persistent_terms")
+      stats = tool.execute.()
 
       assert is_integer(stats.count)
       assert is_float(stats.memory_mb)
       assert stats.count >= 0
     end
+  end
+
+  defp find_tool(intent) do
+    Enum.find(Beam.tools(), fn tool -> tool.intent == intent end)
   end
 end
