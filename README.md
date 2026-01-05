@@ -36,6 +36,12 @@ Investigate ETS table growth, potentially from cache or session storage."
 
 - **Bring Your Own Model** (Coming Soon) — Anthropic (available now), with OpenAI, AWS Bedrock, Google Gemini, Azure OpenAI, Ollama, and more coming in future releases.
 
+## How It Works
+
+BeamLens runs in your supervision tree. Schedule it with a cron expression for continuous monitoring, or call `Beamlens.run()` directly when you need it. It emits telemetry events you can consume with your existing observability stack.
+
+No separate services to deploy. Just an Elixir library.
+
 ## Installation
 
 ```elixir
