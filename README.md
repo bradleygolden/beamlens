@@ -16,13 +16,14 @@ BeamLens assembles that context for you—a starting point to verify, not a blac
 
 ```
 Without BeamLens:
-scheduler_utilization: 0.87
-memory_total: 2147483648
-process_count: 12847
+memory_total: 12582912000
+memory_processes: 4194304000
+memory_ets: 6815744000
+process_count: 50000
 
 With BeamLens:
-"Scheduler utilization at 87%. Memory usage elevated but stable.
-Process count within normal range. No immediate concerns detected."
+"ETS memory at 54% of total system memory—well above typical levels.
+Investigate ETS table growth, potentially from cache or session storage."
 ```
 
 ## Why BeamLens
