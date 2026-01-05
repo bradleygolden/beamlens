@@ -44,12 +44,7 @@ defmodule Beamlens.MixProject do
       {:puck, "~> 0.1.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.12"},
-      # TODO: Switch back to hex.pm once ClientRegistry is released
-      # {:baml_elixir, "~> 1.0.0-pre.24"},
-      {:baml_elixir,
-       github: "emilsoman/baml_elixir",
-       ref: "51fdb81640230dd14b4556c1d078bce8d8218368",
-       override: true},
+      {:baml_elixir, "~> 1.0.0-pre.23"},
       {:rustler, "~> 0.36", optional: true},
       {:telemetry, "~> 1.2"},
       {:crontab, "~> 1.1"},
@@ -78,7 +73,8 @@ defmodule Beamlens.MixProject do
       links: %{
         "GitHub" => @source_url,
         "Website" => "https://beamlens.dev"
-      }
+      },
+      exclude_patterns: [~r/\.baml_optimize/]
     ]
   end
 

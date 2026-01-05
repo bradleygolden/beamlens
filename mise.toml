@@ -6,7 +6,6 @@ node = "22"
 "npm:@boundaryml/baml" = "latest"
 
 [env]
-BAML_ELIXIR_BUILD = "true"
 _.file = ".env"
 
 [tasks."baml:test"]

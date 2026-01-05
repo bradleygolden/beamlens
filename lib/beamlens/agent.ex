@@ -94,7 +94,8 @@ defmodule Beamlens.Agent do
     backend_config =
       %{
         function: "SelectTool",
-        args_format: :messages
+        args_format: :messages,
+        path: Application.app_dir(:beamlens, "priv/baml_src")
       }
       |> maybe_add_client_config(llm_client, client_registry)
 

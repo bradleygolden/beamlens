@@ -34,7 +34,7 @@ Investigate ETS table growth, potentially from cache or session storage."
 
 - **Supplements Your Stack** — Works alongside Prometheus, Datadog, AppSignal, Sentry—whatever you're already using.
 
-- **Bring Your Own Model** — Anthropic, OpenAI, AWS Bedrock, Google Gemini, Azure OpenAI, Ollama, OpenRouter, Together AI. Your keys, your infrastructure.
+- **Bring Your Own Model** (Coming Soon) — Anthropic (available now), with OpenAI, AWS Bedrock, Google Gemini, Azure OpenAI, Ollama, and more coming in future releases.
 
 ## Prerequisites
 
@@ -54,24 +54,18 @@ end
 
 ## Quick Start
 
-BeamLens uses BAML's [ClientRegistry](https://docs.boundaryml.com/guide/baml-advanced/client-registry) to configure LLM providers at runtime.
+Set your Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
+```
 
 Add to your supervision tree:
 
 ```elixir
 def start(_type, _args) do
   children = [
-    {Beamlens,
-      schedules: [{:default, "*/5 * * * *"}],
-      agent_opts: [
-        client_registry: %{
-          primary: "Claude",
-          clients: [
-            %{name: "Claude", provider: "anthropic",
-              options: %{model: "claude-haiku-4-5-20251001", api_key: System.get_env("ANTHROPIC_API_KEY")}}
-          ]
-        }
-      ]}
+    {Beamlens, schedules: [{:default, "*/5 * * * *"}]}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
@@ -83,17 +77,7 @@ end
 Run the agent on-demand without scheduling—useful for debugging, one-off checks, or integrating with your own triggers:
 
 ```elixir
-# Configure your LLM provider
-client_registry = %{
-  primary: "Claude",
-  clients: [
-    %{name: "Claude", provider: "anthropic",
-      options: %{model: "claude-haiku-4-5-20251001", api_key: System.get_env("ANTHROPIC_API_KEY")}}
-  ]
-}
-
-# Run the agent
-case Beamlens.run(client_registry: client_registry) do
+case Beamlens.run() do
   {:ok, analysis} ->
     IO.puts("Status: #{analysis.status}")
     IO.puts("Summary: #{analysis.summary}")
@@ -116,27 +100,17 @@ The `HealthAnalysis` struct contains:
 | `concerns` | `[String.t()]` | List of identified concerns |
 | `recommendations` | `[String.t()]` | Actionable next steps |
 
-### Bring Your Own Model
+### Bring Your Own Model (Coming Soon)
 
-```elixir
-# Ollama (run completely offline)
-%{primary: "Ollama", clients: [
-  %{name: "Ollama", provider: "openai-generic",
-    options: %{base_url: "http://localhost:11434/v1", model: "llama4"}}
-]}
+Custom LLM provider configuration will be available in a future release. Currently, BeamLens uses Claude Haiku via Anthropic's API.
 
-# AWS Bedrock
-%{primary: "Bedrock", clients: [
-  %{name: "Bedrock", provider: "aws-bedrock",
-    options: %{model: "anthropic.claude-haiku-4-5-v1:0", region: "us-east-1"}}
-]}
-
-# OpenAI
-%{primary: "OpenAI", clients: [
-  %{name: "OpenAI", provider: "openai",
-    options: %{model: "gpt-4o-mini", api_key: System.get_env("OPENAI_API_KEY")}}
-]}
-```
+Planned support includes:
+- Ollama (run completely offline)
+- AWS Bedrock
+- OpenAI
+- Google Gemini
+- Azure OpenAI
+- OpenRouter, Together AI, and more
 
 ## What It Observes
 

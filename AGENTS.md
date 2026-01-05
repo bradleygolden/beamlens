@@ -8,6 +8,7 @@ A runtime AI agent that monitors BEAM application health and generates actionabl
 - Never use @spec
 - Never use Process.sleep in tests. Instead rely on deterministic logic
 - Never use non-critical comments
+- Avoid tautological or disjunctive assertions. Each test should assert exactly one expected outcome. If you're uncertain which outcome to expect, that indicates the test setup needs to be more specific, not that the assertion should be looser.
 
 # BAML (Basically, A Made-Up Language) Reference Guide for AI Agents
 

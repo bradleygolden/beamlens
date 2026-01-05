@@ -1,12 +1,15 @@
 defmodule Beamlens.Integration.AgentTest do
   @moduledoc false
 
-  use Beamlens.IntegrationCase, async: false
+  use ExUnit.Case, async: false
 
-  describe "Agent.run/1 with Ollama" do
-    @tag timeout: 120_000
-    test "runs agent loop and returns health analysis", %{client_registry: client_registry} do
-      {:ok, analysis} = Beamlens.Agent.run(client_registry: client_registry, max_iterations: 10)
+  @moduletag :integration
+
+  describe "Agent.run/1 with default provider" do
+    @describetag timeout: 120_000
+
+    test "runs agent loop and returns health analysis" do
+      {:ok, analysis} = Beamlens.Agent.run(max_iterations: 10)
 
       assert %Beamlens.HealthAnalysis{} = analysis
       assert analysis.status in [:healthy, :warning, :critical]
