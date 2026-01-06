@@ -10,6 +10,20 @@ A runtime AI agent that monitors BEAM application health and generates actionabl
 - Never use non-critical comments
 - Avoid tautological or disjunctive assertions. Each test should assert exactly one expected outcome. If you're uncertain which outcome to expect, that indicates the test setup needs to be more specific, not that the assertion should be looser.
 
+## Elixir/OTP Principles
+
+Write idiomatic Elixir. Trust the BEAM.
+
+- **Let it crash** - Don't over-defend with try/rescue. Let supervisors handle failures. Rescue only at boundaries where you must translate errors.
+- **Supervisors for fault tolerance** - Processes should be supervised. Design supervisor trees that isolate failure domains.
+- **Processes for isolation** - Use processes to isolate state and failure, not just for concurrency.
+- **Pattern matching over conditionals** - Prefer function clause matching over if/cond/case when dispatching on shape.
+- **Pipelines over nesting** - Use |> for data transformations. Avoid deeply nested function calls.
+- **GenServer for state** - When you need state, reach for GenServer. Keep state minimal and focused.
+- **Task for fire-and-forget** - Use Task.Supervisor for work that doesn't need a reply.
+- **Immutability is the default** - Don't fight it. Transform data, don't mutate it.
+- **Fail fast, fail loud** - Raise on invalid inputs at boundaries. Don't silently return nil or defaults.
+
 # BAML (Basically, A Made-Up Language) Reference Guide for AI Agents
 
 <Overview>
