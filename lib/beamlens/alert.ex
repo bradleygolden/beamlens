@@ -84,7 +84,7 @@ defmodule Beamlens.Alert do
   ## Required Attributes
 
     * `:watcher` - Domain atom (e.g., :beam, :ecto)
-    * `:anomaly_type` - Classification atom (e.g., :memory_elevated)
+    * `:anomaly_type` - Classification string (e.g., "memory_elevated")
     * `:severity` - One of :info, :warning, :critical
     * `:summary` - Brief description string
     * `:snapshot` - Map of frozen metrics
