@@ -7,8 +7,6 @@ defmodule Beamlens.Judge do
   and concern-data alignment.
   """
 
-  require Logger
-
   alias Beamlens.Events.{JudgeCall, LLMCall, ToolCall}
   alias Beamlens.{HealthAnalysis, Telemetry}
   alias Puck.Context
@@ -116,7 +114,6 @@ defmodule Beamlens.Judge do
         {:ok, judge_event}
 
       {:error, reason} = error ->
-        Logger.warning("[BeamLens.Judge] Review failed: #{inspect(reason)}")
         Telemetry.emit_judge_exception(trace_metadata, reason, start_time)
         error
     end

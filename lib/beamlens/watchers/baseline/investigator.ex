@@ -17,8 +17,6 @@ defmodule Beamlens.Watchers.Baseline.Investigator do
   5. Pattern matches on `InvestigationComplete` → returns findings
   """
 
-  require Logger
-
   alias Beamlens.Watchers.Baseline.Decision
   alias Beamlens.Watchers.Baseline.Decision.InvestigationComplete
   alias Puck.Context
@@ -99,7 +97,6 @@ defmodule Beamlens.Watchers.Baseline.Investigator do
     end
   end
 
-  # Termination: InvestigationComplete
   defp handle_response(
          %InvestigationComplete{findings: findings},
          _client,
@@ -118,7 +115,6 @@ defmodule Beamlens.Watchers.Baseline.Investigator do
     {:ok, findings}
   end
 
-  # Tool selection: any struct with intent field
   defp handle_response(
          %{intent: intent} = tool_struct,
          client,
@@ -132,10 +128,7 @@ defmodule Beamlens.Watchers.Baseline.Investigator do
         execute_and_continue(tool, tool_struct, client, context, remaining, timeout, tools)
 
       :error ->
-        Logger.warning("[BeamLens] Investigation selected unknown tool: #{intent}",
-          trace_id: context.metadata.trace_id
-        )
-
+        emit_telemetry(:unknown_tool, %{trace_id: context.metadata.trace_id, intent: intent})
         {:error, {:unknown_tool, intent}}
     end
   end

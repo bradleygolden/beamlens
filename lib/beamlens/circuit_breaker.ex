@@ -58,7 +58,6 @@ defmodule Beamlens.CircuitBreaker do
   """
 
   use GenServer
-  require Logger
 
   @default_failure_threshold 5
   @default_reset_timeout :timer.seconds(30)
@@ -224,7 +223,6 @@ defmodule Beamlens.CircuitBreaker do
       }
 
       emit_state_change(:half_open, :closed, new_state, :recovery_complete)
-      Logger.info("[BeamLens] Circuit breaker closed after #{new_success_count} successful calls")
       {:reply, :ok, new_state}
     else
       {:reply, :ok, %{state | success_count: new_success_count}}
@@ -252,12 +250,6 @@ defmodule Beamlens.CircuitBreaker do
       }
 
       emit_state_change(:closed, :open, new_state, reason)
-
-      Logger.warning(
-        "[BeamLens] Circuit breaker opened after #{new_failure_count} consecutive failures. " <>
-          "Will retry in #{state.reset_timeout}ms. Last error: #{inspect(reason)}"
-      )
-
       {:reply, :ok, new_state}
     else
       {:reply, :ok,
@@ -283,11 +275,6 @@ defmodule Beamlens.CircuitBreaker do
     }
 
     emit_state_change(:half_open, :open, new_state, reason)
-
-    Logger.warning(
-      "[BeamLens] Circuit breaker reopened from half_open. Error: #{inspect(reason)}"
-    )
-
     {:reply, :ok, new_state}
   end
 
@@ -299,7 +286,6 @@ defmodule Beamlens.CircuitBreaker do
   def handle_info(:reset_timeout, %{state: :open} = state) do
     new_state = %{state | state: :half_open, success_count: 0, reset_timer_ref: nil}
     emit_state_change(:open, :half_open, new_state, :timeout)
-    Logger.info("[BeamLens] Circuit breaker half_open, testing recovery")
     {:noreply, new_state}
   end
 
