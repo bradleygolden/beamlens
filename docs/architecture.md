@@ -1,13 +1,13 @@
 # Architecture
 
-BeamLens uses an **orchestrator-workers** architecture where specialized watchers autonomously monitor BEAM VM metrics, learn baseline behavior using LLMs, and detect anomalies. When issues are found, an AI agent investigates and correlates findings.
+BeamLens uses an **autonomous watcher** architecture where specialized watchers run continuous LLM-driven loops to monitor domains and detect anomalies. Alerts are emitted via telemetry.
 
 ## Supervision Tree
 
 Add BeamLens to your application's supervision tree:
 
 ```elixir
-{Beamlens, watchers: [{:beam, "*/5 * * * *"}]}
+{Beamlens, watchers: [:beam]}
 ```
 
 This starts the following components:
@@ -16,139 +16,125 @@ This starts the following components:
 graph TD
     S[Beamlens.Supervisor]
     S --> TS[TaskSupervisor]
-    S --> CB[CircuitBreaker?]
     S --> WR[WatcherRegistry]
-    S --> AQ[AlertQueue]
-    S --> WS[Watchers.Supervisor]
-    S --> AH[AlertHandler]
+    S --> WS[Watcher.Supervisor]
 
-    WS --> W1[Watcher.Server: beam]
-    WS --> W2[Watcher.Server: custom]
-
-    TS -.-> AG[Agent]
-    AH -.-> AG
+    WS --> W1[Watcher: beam]
+    WS --> W2[Watcher: custom]
 ```
 
-Each watcher runs independently. If one crashes, others continue operating. CircuitBreaker is optional.
+Each watcher runs independently. If one crashes, others continue operating.
 
-## Data Flow
+## Watcher Loop
 
-Data flows through three stages: monitoring, orchestration, and investigation.
-
-```mermaid
-flowchart LR
-    subgraph Monitoring
-        VM[BEAM VM] --> S[Watcher.Server]
-        S --> OH[ObservationHistory]
-        OH --> BL[Baseline LLM]
-    end
-
-    subgraph Orchestration
-        BL --> |anomaly| CD{Cooldown?}
-        CD --> |no| Q[AlertQueue]
-        CD --> |yes| X[Suppressed]
-        Q --> H[AlertHandler]
-    end
-
-    subgraph Investigation
-        H --> A[Agent]
-        A --> |tool calls| LLM[LLM]
-        LLM --> A
-        A --> |review| J[Judge LLM]
-        J --> R[HealthAnalysis]
-    end
-```
-
-1. **Monitoring**: Watcher servers collect VM metrics on cron schedules, storing observations in a sliding window. The baseline LLM learns normal patterns and detects deviations.
-2. **Orchestration**: When anomalies are detected, they pass through a cooldown check to prevent duplicate alerts, then flow through a queue to the handler.
-3. **Investigation**: The agent runs a tool-calling loop to gather detailed metrics, then a judge reviews the analysis.
-
-## Alert Cooldown
-
-To prevent alert fatigue, detected anomalies are subject to a per-category cooldown. The baseline LLM specifies the cooldown duration based on context (defaulting to 5 minutes). After reporting an anomaly, subsequent anomalies of the same category within the cooldown period are suppressed. Categories are derived from the anomaly type prefix (e.g., "memory_high" → memory).
-
-## Agent Loop
-
-The agent uses an LLM to select which metrics to gather, executing tools until it has enough information to produce an analysis.
+Each watcher is a GenServer running a continuous LLM-driven loop:
 
 ```mermaid
 flowchart TD
-    START[Start] --> TOOL[LLM selects tool]
-    TOOL --> EXEC[Execute tool]
-    EXEC --> CHECK{Done?}
-    CHECK --> |No| TOOL
-    CHECK --> |Yes| JUDGE[Judge reviews]
-    JUDGE --> |Accept| OUTPUT[HealthAnalysis]
-    JUDGE --> |Retry| TOOL
+    START[Start] --> SNAP[Build snapshot context]
+    SNAP --> LLM[LLM selects tool]
+    LLM --> EXEC[Execute tool]
+    EXEC --> |SetState| STATE[Update state]
+    EXEC --> |FireAlert| ALERT[Emit telemetry]
+    EXEC --> |TakeSnapshot| CAPTURE[Store snapshot]
+    EXEC --> |Execute| LUA[Run Lua code]
+    EXEC --> |Wait| SLEEP[Sleep ms]
+    STATE --> LLM
+    ALERT --> LLM
+    CAPTURE --> LLM
+    LUA --> LLM
+    SLEEP --> LLM
 ```
 
-Available tools include GetOverview, GetSystemInfo, GetMemoryStats, GetProcessStats, GetSchedulerStats, GetAtomStats, GetPersistentTerms, and GetTopProcesses.
+The LLM controls the loop timing via the `wait` tool. There are no fixed schedules.
 
-## Components
+## State Model
 
-| Component | Purpose |
-|-----------|---------|
-| Watcher.Server | GenServer running individual watcher on cron schedule |
-| ObservationHistory | Sliding window buffer for baseline observations |
-| Baseline.Analyzer | Calls AnalyzeBaseline LLM to learn patterns and detect anomalies |
-| Baseline.Context | Tracks LLM notes and timing for baseline learning |
-| Baseline.Investigator | Tool-calling loop for watcher anomaly investigation |
-| Baseline.Decision | Decision structs (ContinueObserving, Alert, Healthy) for baseline LLM output |
-| AlertQueue | Buffer anomaly alerts from watchers |
-| AlertHandler | Trigger investigation when alerts arrive |
-| Agent | Run tool-calling loop to gather metrics |
-| Judge | Review analysis quality, request retries if needed |
-| CircuitBreaker | Protect against LLM rate limits (optional) |
-| WatcherRegistry | Registry for looking up watcher processes by name |
+Watchers maintain one of four states reflecting current assessment:
 
-## Included Watchers
+| State | Description |
+|-------|-------------|
+| `healthy` | Everything is normal |
+| `observing` | Something looks off, gathering more data |
+| `warning` | Elevated concern, not yet critical |
+| `critical` | Active issue requiring attention |
 
-### BEAM Watcher (`:beam`)
+State transitions are driven by the LLM via the `set_state` tool.
 
-Monitors BEAM VM runtime health using LLM-driven baseline learning.
-
-**Baseline Metrics** (tracked for pattern learning):
-- Memory utilization %
-- Process utilization %
-- Port utilization %
-- Atom utilization %
-- Scheduler run queue depth
-- Schedulers online
-
-**Investigation Tools** (available when anomaly detected):
+## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `get_overview` | Utilization percentages across all categories |
-| `get_system_info` | Node identity, OTP version, uptime, schedulers |
-| `get_memory_stats` | Memory breakdown: total, processes, system, binary, ETS, code |
-| `get_process_stats` | Process/port counts and limits |
-| `get_scheduler_stats` | Scheduler counts and run queue |
-| `get_atom_stats` | Atom table count, limit, memory |
-| `get_persistent_terms` | Persistent term count and memory |
-| `get_top_processes` | Top processes by memory, message queue, or reductions |
+| `set_state` | Update watcher state with reason |
+| `fire_alert` | Create alert with referenced snapshots |
+| `get_alerts` | Retrieve previous alerts for correlation |
+| `take_snapshot` | Capture current metrics with unique ID |
+| `get_snapshot` | Retrieve specific snapshot by ID |
+| `get_snapshots` | Retrieve multiple snapshots with pagination |
+| `execute` | Run Lua code with metric callbacks |
+| `wait` | Sleep before next iteration (LLM-controlled timing) |
 
-**Configuration:**
-```elixir
-{:beam, "*/5 * * * *"}  # Run every 5 minutes
+## Lua Callbacks
+
+The `execute` tool runs Lua code in a sandbox with access to metric callbacks:
+
+| Callback | Description |
+|----------|-------------|
+| `get_memory()` | Memory breakdown: total, processes, binary, ETS, code |
+| `get_processes()` | Process and port counts with limits |
+| `get_schedulers()` | Scheduler counts and run queue depth |
+| `get_atoms()` | Atom table count, limit, memory |
+| `get_system()` | Node identity, OTP version, uptime |
+| `get_persistent_terms()` | Persistent term count and memory |
+| `top_processes(limit, sort_by)` | Top N processes by memory, message queue, or reductions |
+
+Example Lua code:
+
+```lua
+local mem = get_memory()
+local procs = top_processes(5, "memory")
+return {memory = mem, top_procs = procs}
 ```
+
+## Telemetry Events
+
+Watchers emit telemetry events for observability. Key events:
+
+| Event | Description |
+|-------|-------------|
+| `[:beamlens, :watcher, :started]` | Watcher initialized |
+| `[:beamlens, :watcher, :state_change]` | State transitioned |
+| `[:beamlens, :watcher, :alert_fired]` | Alert created |
+| `[:beamlens, :watcher, :iteration_start]` | Loop iteration began |
+| `[:beamlens, :llm, :start]` | LLM call started |
+| `[:beamlens, :llm, :stop]` | LLM call completed |
+
+Subscribe to alerts:
+
+```elixir
+:telemetry.attach("my-alerts", [:beamlens, :watcher, :alert_fired], fn
+  _event, _measurements, %{alert: alert}, _config ->
+    Logger.warning("Alert: #{alert.summary}")
+end, nil)
+```
+
+See `Beamlens.Telemetry` for the complete event list.
 
 ## LLM Integration
 
-BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via the [Puck](https://github.com/bradleygolden/puck) framework. Four BAML functions handle different stages:
+BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). One BAML function handles the watcher loop:
 
-- **AnalyzeBaseline**: Observes metrics over time, decides whether to continue watching, alert on anomaly, or report healthy
-- **SelectInvestigationTool**: Watcher investigation loop, gathers detailed data after anomaly detection
-- **SelectTool**: Main agent loop, chooses which metric-gathering tool to execute next
-- **JudgeAnalysis**: Reviews the agent's analysis for quality, may request retries
+- **WatcherLoop**: Continuous agent loop that observes metrics and selects tools
+
+Default LLM: Anthropic Claude Haiku (`claude-haiku-4-5-20251001`)
 
 ## LLM Client Configuration
 
-By default, BeamLens uses Anthropic's Claude Haiku. Configure alternative LLM providers via `:client_registry`:
+Configure alternative LLM providers via `:client_registry`:
 
 ```elixir
 {Beamlens,
-  watchers: [{:beam, "*/5 * * * *"}],
+  watchers: [:beam],
   client_registry: %{
     primary: "Ollama",
     clients: [
@@ -159,9 +145,69 @@ By default, BeamLens uses Anthropic's Claude Haiku. Configure alternative LLM pr
 }
 ```
 
-The `client_registry` propagates through the supervision tree to all LLM-calling components:
-- `Beamlens.Agent` for health analysis
-- `Beamlens.Judge` for quality checks
-- `Beamlens.AlertHandler` for alert investigation
-- `Beamlens.Watchers.Baseline.Analyzer` for anomaly detection
-- `Beamlens.Watchers.Baseline.Investigator` for deep investigation
+See [providers.md](providers.md) for configuration examples.
+
+## Included Domains
+
+### BEAM Domain (`:beam`)
+
+Monitors BEAM VM runtime health.
+
+**Snapshot Metrics** (checked each iteration):
+- Memory utilization %
+- Process utilization %
+- Port utilization %
+- Atom utilization %
+- Scheduler run queue depth
+- Schedulers online
+
+**Lua Callbacks** (available in `execute` tool):
+
+| Callback | Description |
+|----------|-------------|
+| `get_memory()` | Memory breakdown by category |
+| `get_processes()` | Process/port counts and limits |
+| `get_schedulers()` | Scheduler stats and run queue |
+| `get_atoms()` | Atom table statistics |
+| `get_system()` | Node info, OTP version, uptime |
+| `get_persistent_terms()` | Persistent term count and memory |
+| `top_processes(limit, sort_by)` | Top processes by memory/queue/reductions |
+
+## Custom Domains
+
+Implement the `Beamlens.Domain` behaviour to create custom monitoring domains:
+
+```elixir
+defmodule MyApp.Domain.Postgres do
+  @behaviour Beamlens.Domain
+
+  @impl true
+  def domain, do: :postgres
+
+  @impl true
+  def snapshot do
+    %{
+      active_connections: count_active(),
+      pool_size: pool_size(),
+      query_queue_depth: queue_depth()
+    }
+  end
+
+  @impl true
+  def callbacks do
+    %{
+      "get_slow_queries" => &slow_queries/0,
+      "get_pool_stats" => &pool_stats/0
+    }
+  end
+end
+```
+
+Register in supervision tree:
+
+```elixir
+{Beamlens, watchers: [
+  :beam,
+  [name: :postgres, domain_module: MyApp.Domain.Postgres]
+]}
+```

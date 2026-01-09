@@ -4,13 +4,17 @@ An AI agent that continuously monitors your Elixir application.
 
 ## The Problem
 
-Scheduler utilization spikes. Memory grows. A GenServer queue backs up.
+Your alerting fires at 3am. Memory is spiking. By the time you open your laptop and start investigating, the spike has passed. Now you're correlating dashboards with log timestamps, piecing together what happened.
 
-You open your dashboards—Prometheus, Datadog, AppSignal. The data is there. But before you can investigate, you're correlating metrics, cross-referencing logs, building context.
+Even when you have the data, you're the one connecting the dots—cross-referencing metrics with logs, building the picture manually.
 
-BeamLens assembles that context for you—a starting point to verify, not a black box to trust.
+BeamLens closes that gap for application-level issues. Autonomous watchers monitor specific domains using LLM-driven loops. When one detects an anomaly, it investigates immediately—gathering snapshots, executing diagnostic code, and firing alerts while the system state is still live. You get structured alerts with supporting evidence, not scattered data points to assemble yourself.
 
-## Start With Context, Not Just Metrics
+This isn't distributed tracing across services. It's deep introspection within your application—runtime context that generic APM tools can't access. Every operation is read-only by design. Your data stays in your infrastructure. You choose the model provider you trust.
+
+## What You Get
+
+Raw metrics require interpretation. BeamLens gives you analysis:
 
 ```
 Without BeamLens:
@@ -24,26 +28,25 @@ With BeamLens:
 Investigate ETS table growth, potentially from cache or session storage."
 ```
 
-## Why BeamLens
-
-- **BEAM-Native Tooling** — Direct access to BEAM instrumentation: schedulers, memory, processes, atoms. The context generic APM tools can't see.
-
-- **Read-Only by Design** — Zero writes to your system. Type-safe outputs. Your data stays in your infrastructure.
-
-- **Supplements Your Stack** — Works alongside Prometheus, Datadog, AppSignal, Sentry—whatever you're already using.
-
-- **Bring Your Own Model** — Anthropic, OpenAI, Google Gemini, AWS Bedrock, and more via BAML's provider support.
-
 ## How It Works
 
-BeamLens uses an **orchestrator-workers** architecture. Watchers continuously monitor specific domains (BEAM VM, databases, etc.) on cron schedules. When they detect anomalies, an AI agent investigates and correlates findings.
+Each watcher runs a continuous LLM-driven loop. The LLM monitors snapshots, investigates anomalies using Lua code execution in a sandbox, and fires alerts via telemetry when issues are detected.
 
-**Key features:**
-- **LLM-based baseline learning** — Watchers learn normal behavior over time, no manual thresholds needed
-- **Automatic anomaly detection** — Deviations from baseline trigger investigation
-- **Telemetry integration** — All events flow through your existing observability stack
+```
+Watcher → LLM Loop → Telemetry Events
+```
 
-No separate services to deploy. Just an Elixir library.
+The watcher maintains state reflecting its current assessment:
+- **healthy** — Everything is normal
+- **observing** — Something looks off, gathering more data
+- **warning** — Elevated concern, not yet critical
+- **critical** — Active issue requiring attention
+
+**What makes this different:**
+
+- **Deep runtime access** — Watchers can see what generic APM tools can't: BEAM internals, database connection states, queue depths, whatever the domain exposes
+- **Supplements your stack** — Works alongside Prometheus, Datadog, AppSignal, Sentry
+- **Bring your own model** — Anthropic, OpenAI, Ollama, AWS Bedrock, and more
 
 ## Installation
 
@@ -55,10 +58,10 @@ end
 
 ## Quick Start
 
-Set your Anthropic API key:
+Set your Anthropic API key (or configure an [alternative provider](docs/providers.md)):
 
 ```bash
-export ANTHROPIC_API_KEY="your-api-key"
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 Add to your supervision tree:
@@ -66,116 +69,23 @@ Add to your supervision tree:
 ```elixir
 def start(_type, _args) do
   children = [
-    {Beamlens, watchers: [{:beam, "*/5 * * * *"}]}
+    {Beamlens, watchers: [:beam]}
   ]
 
   Supervisor.start_link(children, strategy: :one_for_one)
 end
 ```
 
-The `:beam` watcher monitors BEAM VM metrics (memory, processes, schedulers). It learns baseline behavior automatically and reports anomalies when detected.
+The `:beam` watcher monitors BEAM VM metrics (memory, processes, schedulers, atoms, ports). It continuously analyzes system health and fires alerts when anomalies are detected.
 
-## Watcher Management
-
-Monitor and control watchers at runtime:
+Subscribe to alerts via telemetry:
 
 ```elixir
-# List all running watchers
-Beamlens.list_watchers()
-#=> [%{watcher: :beam, cron: "*/5 * * * *", run_count: 12, ...}]
-
-# Manually trigger a watcher check
-Beamlens.trigger_watcher(:beam)
-
-# Get detailed status for a watcher
-Beamlens.watcher_status(:beam)
-
-# Check if alerts are pending investigation
-Beamlens.pending_alerts?()
-
-# Investigate pending alerts
-{:ok, analysis} = Beamlens.investigate()
+:telemetry.attach("my-alerts", [:beamlens, :watcher, :alert_fired], fn
+  _event, _measurements, %{alert: alert}, _config ->
+    Logger.warning("BeamLens alert: #{alert.summary}")
+end, nil)
 ```
-
-## Quality Verification
-
-A judge agent reviews each analysis to verify conclusions are supported by collected data. If the judge finds issues, the agent automatically retries with feedback.
-
-## Bring Your Own Model
-
-BeamLens supports multiple LLM providers:
-
-- Anthropic (default)
-- OpenAI
-- Google Gemini
-- AWS Bedrock
-- Azure OpenAI
-- Ollama (run completely offline)
-- OpenRouter, Together AI, and more
-
-### Default: Anthropic
-
-Set your API key and you're ready:
-
-```bash
-export ANTHROPIC_API_KEY="your-api-key"
-```
-
-### Custom Provider
-
-Configure a custom provider globally via `client_registry`:
-
-```elixir
-{Beamlens,
-  watchers: [{:beam, "*/5 * * * *"}],
-  client_registry: %{
-    primary: "Ollama",
-    clients: [
-      %{
-        name: "Ollama",
-        provider: "openai-generic",
-        options: %{base_url: "http://localhost:11434/v1", model: "qwen3:4b"}
-      }
-    ]
-  }}
-```
-
-This applies to all LLM calls: watcher baseline analysis, anomaly investigation, and the judge agent.
-
-See the [BAML documentation](https://docs.boundaryml.com/) for all supported providers and options.
-
-## What It Observes
-
-BeamLens gathers safe, read-only runtime metrics:
-
-- Scheduler utilization and run queues
-- Memory breakdown (processes, binaries, ETS, code)
-- Process and port counts with limits
-- Atom table metrics
-- Persistent term usage
-- OTP release and uptime
-
-## Circuit Breaker
-
-Opt-in protection against LLM provider failures:
-
-```elixir
-{Beamlens,
-  watchers: [{:beam, "*/5 * * * *"}],
-  circuit_breaker: [enabled: true, failure_threshold: 5, reset_timeout: 30_000]}
-```
-
-## Documentation
-
-- `Beamlens` — Main module with full configuration options
-- `Beamlens.Agent` — AI agent implementation details
-- `Beamlens.Judge` — Quality verification agent
-- `Beamlens.Watchers.Watcher` — Behaviour for implementing custom watchers
-- `Beamlens.Watchers.BeamWatcher` — Built-in BEAM VM watcher
-- `Beamlens.Alert` — Watcher anomaly alerts
-- `Beamlens.AlertQueue` — Alert queue for watcher communication
-- `Beamlens.AlertHandler` — Alert handler and investigation trigger
-- `Beamlens.Telemetry` — Telemetry events for observability
 
 ## License
 

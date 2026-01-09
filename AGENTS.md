@@ -9,6 +9,13 @@ A runtime AI agent that monitors BEAM application health and generates actionabl
 - Never use Process.sleep in tests. Instead rely on deterministic logic
 - Never use non-critical comments
 - Avoid tautological or disjunctive assertions. Each test should assert exactly one expected outcome. If you're uncertain which outcome to expect, that indicates the test setup needs to be more specific, not that the assertion should be looser.
+- NEVER use case statements or any kind of conditional logic in test assertions where the conditional logic is meant to handle different outcomes.
+
+## Conventions
+
+This project uses the puck dependency for its AI agent interface. Please refer to the deps documentation for more information as needed.
+
+- AI agents are just loops that pattern match on structured output in the form of structs. This is capable via Puck
 
 ## Elixir/OTP Principles
 
