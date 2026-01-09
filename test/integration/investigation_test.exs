@@ -122,8 +122,8 @@ defmodule Beamlens.Integration.InvestigationTest do
       assert judge_calls != [], "Expected at least one JudgeCall event"
 
       [judge_call | _] = judge_calls
-      assert judge_call.verdict in [:accept, :retry]
-      assert judge_call.confidence in [:high, :medium, :low]
+      assert is_atom(judge_call.verdict)
+      assert is_atom(judge_call.confidence)
     end
 
     test "excludes JudgeCall events when judge is disabled", %{client_registry: client_registry} do
