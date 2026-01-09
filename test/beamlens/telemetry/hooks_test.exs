@@ -2,7 +2,7 @@ defmodule Beamlens.Telemetry.HooksTest do
   use ExUnit.Case
 
   alias Beamlens.Telemetry.Hooks
-  alias Beamlens.Tools
+  alias Beamlens.Watcher.Tools
 
   describe "on_call_start/3" do
     test "emits llm call_start event with metadata" do
@@ -57,7 +57,7 @@ defmodule Beamlens.Telemetry.HooksTest do
       }
 
       response = %Puck.Response{
-        content: %Tools.GetMemoryStats{intent: "checking memory for issues"}
+        content: %Tools.TakeSnapshot{intent: "checking memory for issues"}
       }
 
       result = Hooks.on_call_end(nil, response, context)
@@ -68,7 +68,7 @@ defmodule Beamlens.Telemetry.HooksTest do
       assert is_integer(measurements.duration)
       assert metadata.trace_id == "trace-xyz"
       assert metadata.iteration == 2
-      assert metadata.tool_selected == "get_memory_stats"
+      assert metadata.tool_selected == "take_snapshot"
       assert metadata.intent == "checking memory for issues"
       assert metadata.response == response.content
 
@@ -94,7 +94,7 @@ defmodule Beamlens.Telemetry.HooksTest do
       }
 
       response = %Puck.Response{
-        content: %Tools.GetSystemInfo{intent: nil}
+        content: %Tools.Wait{intent: nil, ms: 1000}
       }
 
       Hooks.on_call_end(nil, response, context)

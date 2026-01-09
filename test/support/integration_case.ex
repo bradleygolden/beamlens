@@ -49,7 +49,7 @@ defmodule Beamlens.IntegrationCase do
         {:error, "OPENAI_API_KEY not set"}
 
       _key ->
-        model = System.get_env("BEAMLENS_TEST_MODEL", "gpt-5.2-mini")
+        model = System.get_env("BEAMLENS_TEST_MODEL", "gpt-4o-mini")
 
         {:ok,
          %{
