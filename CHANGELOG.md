@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `memory_utilization_pct` from BEAM domain snapshots — the calculation was meaningless (always 85-100%) because it divided BEAM memory by itself; use `Domain.System` for OS-level memory monitoring instead
 - Circuit breaker protection (use LLM provider retry policies instead)
 - Judge agent quality verification
-- Scheduled cron-based watcher triggers (watchers now run continuously)
+- Scheduled cron-based watcher triggers and `crontab` dependency (watchers now run continuously)
 - Beamlens.investigate/1 — alerts now fire automatically via telemetry
 - Beamlens.trigger_watcher/1 — watchers are self-managing
 - Beamlens.pending_alerts?/0 — replaced by telemetry events
