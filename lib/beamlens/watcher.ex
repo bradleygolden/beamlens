@@ -466,9 +466,7 @@ defmodule Beamlens.Watcher do
     keep_last = Keyword.get(opts, :compaction_keep_last, 5)
 
     {:summarize,
-      max_tokens: max_tokens,
-      keep_last: keep_last,
-      prompt: watcher_compaction_prompt()}
+     max_tokens: max_tokens, keep_last: keep_last, prompt: watcher_compaction_prompt()}
   end
 
   defp watcher_compaction_prompt do

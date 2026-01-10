@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- `memory_utilization_pct` from BEAM domain snapshots — the calculation was meaningless (always 85-100%) because it divided BEAM memory by itself; use `Domain.System` for OS-level memory monitoring instead
 - Circuit breaker protection (use LLM provider retry policies instead)
 - Judge agent quality verification
 - Scheduled cron-based watcher triggers (watchers now run continuously)

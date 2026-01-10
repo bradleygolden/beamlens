@@ -47,18 +47,18 @@ defmodule Beamlens.Supervisor do
       Keyword.put_new(coordinator_opts, :client_registry, client_registry)
 
     children =
-      [
-        {Task.Supervisor, name: Beamlens.TaskSupervisor},
-        {Registry, keys: :unique, name: Beamlens.WatcherRegistry}
-      ] ++
-        logger_children(watchers) ++
-        exception_children(watchers) ++
-        [
-          {WatcherSupervisor, []},
-          watcher_starter_child(watchers, client_registry),
-          {Coordinator, coordinator_opts}
-        ]
-        |> Enum.reject(&is_nil/1)
+      ([
+         {Task.Supervisor, name: Beamlens.TaskSupervisor},
+         {Registry, keys: :unique, name: Beamlens.WatcherRegistry}
+       ] ++
+         logger_children(watchers) ++
+         exception_children(watchers) ++
+         [
+           {WatcherSupervisor, []},
+           watcher_starter_child(watchers, client_registry),
+           {Coordinator, coordinator_opts}
+         ])
+      |> Enum.reject(&is_nil/1)
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -68,7 +68,9 @@ defmodule Beamlens.Supervisor do
   defp watcher_starter_child(watchers, client_registry) do
     %{
       id: :watcher_starter,
-      start: {Task, :start_link, [fn -> WatcherSupervisor.start_watchers_with_opts(watchers, client_registry) end]},
+      start:
+        {Task, :start_link,
+         [fn -> WatcherSupervisor.start_watchers_with_opts(watchers, client_registry) end]},
       restart: :temporary
     }
   end

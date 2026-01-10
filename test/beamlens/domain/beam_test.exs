@@ -15,7 +15,6 @@ defmodule Beamlens.Domain.BeamTest do
     test "returns utilization percentages" do
       snapshot = Beam.snapshot()
 
-      assert is_float(snapshot.memory_utilization_pct)
       assert is_float(snapshot.process_utilization_pct)
       assert is_float(snapshot.port_utilization_pct)
       assert is_float(snapshot.atom_utilization_pct)
@@ -26,8 +25,6 @@ defmodule Beamlens.Domain.BeamTest do
     test "utilization values are within bounds" do
       snapshot = Beam.snapshot()
 
-      assert snapshot.memory_utilization_pct >= 0
-      assert snapshot.memory_utilization_pct <= 100
       assert snapshot.process_utilization_pct >= 0
       assert snapshot.process_utilization_pct <= 100
     end

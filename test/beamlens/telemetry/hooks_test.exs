@@ -160,9 +160,10 @@ defmodule Beamlens.Telemetry.HooksTest do
         metadata: %{trace_id: "trace-compact", iteration: 7}
       }
 
-      result = Hooks.on_compaction_start(context, Puck.Compaction.Summarize, %{max_tokens: 50_000})
+      result =
+        Hooks.on_compaction_start(context, Puck.Compaction.Summarize, %{max_tokens: 50_000})
 
-      assert result == :ok
+      assert result == {:cont, context}
 
       assert_receive {:telemetry, [:beamlens, :compaction, :start], measurements, metadata}
       assert is_integer(measurements.system_time)
@@ -193,9 +194,10 @@ defmodule Beamlens.Telemetry.HooksTest do
         metadata: %{}
       }
 
-      result = Hooks.on_compaction_start(context, Puck.Compaction.SlidingWindow, %{window_size: 20})
+      result =
+        Hooks.on_compaction_start(context, Puck.Compaction.SlidingWindow, %{window_size: 20})
 
-      assert result == :ok
+      assert result == {:cont, context}
 
       assert_receive {:telemetry, [:beamlens, :compaction, :start], measurements, metadata}
       assert measurements.message_count == 1
@@ -228,7 +230,7 @@ defmodule Beamlens.Telemetry.HooksTest do
 
       result = Hooks.on_compaction_end(context, %{})
 
-      assert result == :ok
+      assert result == {:cont, context}
 
       assert_receive {:telemetry, [:beamlens, :compaction, :stop], measurements, metadata}
       assert is_integer(measurements.system_time)
@@ -259,7 +261,7 @@ defmodule Beamlens.Telemetry.HooksTest do
 
       result = Hooks.on_compaction_end(context, %{})
 
-      assert result == :ok
+      assert result == {:cont, context}
 
       assert_receive {:telemetry, [:beamlens, :compaction, :stop], measurements, _metadata}
       assert measurements.message_count == 0

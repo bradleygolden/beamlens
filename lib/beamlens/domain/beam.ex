@@ -22,12 +22,7 @@ defmodule Beamlens.Domain.Beam do
   """
   @impl true
   def snapshot do
-    memory = :erlang.memory()
-    total_mem = memory[:total]
-    used_mem = memory[:processes] + memory[:system]
-
     %{
-      memory_utilization_pct: Float.round(used_mem / total_mem * 100, 1),
       process_utilization_pct:
         Float.round(
           :erlang.system_info(:process_count) / :erlang.system_info(:process_limit) * 100,

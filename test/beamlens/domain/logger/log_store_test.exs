@@ -3,6 +3,8 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   require Logger
 
   alias Beamlens.Domain.Logger.LogStore
@@ -28,9 +30,12 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "aggregates log events by level", %{store: _store} do
-      Logger.error("error message")
-      Logger.warning("warning message")
-      Logger.warning("another warning")
+      capture_log(fn ->
+        Logger.error("error message")
+        Logger.warning("warning message")
+        Logger.warning("another warning")
+      end)
+
       LogStore.flush(@test_name)
 
       stats = LogStore.get_stats(@test_name)
@@ -41,10 +46,13 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "calculates error rate", %{store: _store} do
-      Logger.error("error 1")
-      Logger.error("error 2")
-      Logger.warning("warning 1")
-      Logger.warning("warning 2")
+      capture_log(fn ->
+        Logger.error("error 1")
+        Logger.error("error 2")
+        Logger.warning("warning 1")
+        Logger.warning("warning 2")
+      end)
+
       LogStore.flush(@test_name)
 
       stats = LogStore.get_stats(@test_name)
@@ -62,9 +70,12 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "returns logs", %{store: _store} do
-      Logger.warning("first")
-      Logger.warning("second")
-      Logger.warning("third")
+      capture_log(fn ->
+        Logger.warning("first")
+        Logger.warning("second")
+        Logger.warning("third")
+      end)
+
       LogStore.flush(@test_name)
 
       logs = LogStore.get_logs(@test_name)
@@ -77,8 +88,11 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "filters by level", %{store: _store} do
-      Logger.error("error")
-      Logger.warning("warning")
+      capture_log(fn ->
+        Logger.error("error")
+        Logger.warning("warning")
+      end)
+
       LogStore.flush(@test_name)
 
       logs = LogStore.get_logs(@test_name, level: "error")
@@ -88,9 +102,11 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "respects limit", %{store: _store} do
-      for i <- 1..10 do
-        Logger.warning("message #{i}")
-      end
+      capture_log(fn ->
+        for i <- 1..10 do
+          Logger.warning("message #{i}")
+        end
+      end)
 
       LogStore.flush(@test_name)
 
@@ -102,10 +118,13 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
 
   describe "recent_errors/2" do
     test "returns only error-level logs", %{store: _store} do
-      Logger.warning("warning")
-      Logger.error("error 1")
-      Logger.warning("another warning")
-      Logger.error("error 2")
+      capture_log(fn ->
+        Logger.warning("warning")
+        Logger.error("error 1")
+        Logger.warning("another warning")
+        Logger.error("error 2")
+      end)
+
       LogStore.flush(@test_name)
 
       errors = LogStore.recent_errors(@test_name, 10)
@@ -115,9 +134,11 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "respects limit", %{store: _store} do
-      for i <- 1..10 do
-        Logger.error("error #{i}")
-      end
+      capture_log(fn ->
+        for i <- 1..10 do
+          Logger.error("error #{i}")
+        end
+      end)
 
       LogStore.flush(@test_name)
 
@@ -129,9 +150,12 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
 
   describe "search/3" do
     test "returns matching logs", %{store: _store} do
-      Logger.warning("user logged in")
-      Logger.warning("user logged out")
-      Logger.warning("system started")
+      capture_log(fn ->
+        Logger.warning("user logged in")
+        Logger.warning("user logged out")
+        Logger.warning("system started")
+      end)
+
       LogStore.flush(@test_name)
 
       results = LogStore.search(@test_name, "user", limit: 10)
@@ -140,7 +164,10 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "returns empty list for no matches", %{store: _store} do
-      Logger.warning("hello world")
+      capture_log(fn ->
+        Logger.warning("hello world")
+      end)
+
       LogStore.flush(@test_name)
 
       results = LogStore.search(@test_name, "xyznotfound123", limit: 10)
@@ -149,7 +176,10 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
     end
 
     test "handles invalid regex gracefully", %{store: _store} do
-      Logger.warning("test message")
+      capture_log(fn ->
+        Logger.warning("test message")
+      end)
+
       LogStore.flush(@test_name)
 
       results = LogStore.search(@test_name, "[invalid", limit: 10)
@@ -161,7 +191,11 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
   describe "message truncation" do
     test "truncates messages exceeding 2048 bytes", %{store: _store} do
       long_message = String.duplicate("x", 3000)
-      Logger.warning(long_message)
+
+      capture_log(fn ->
+        Logger.warning(long_message)
+      end)
+
       LogStore.flush(@test_name)
 
       logs = LogStore.get_logs(@test_name, limit: 1)
@@ -177,9 +211,11 @@ defmodule Beamlens.Domain.Logger.LogStoreTest do
       stop_supervised!(LogStore)
       {:ok, _pid} = start_supervised({LogStore, name: @test_name, max_size: 5})
 
-      for i <- 1..10 do
-        Logger.warning("message #{i}")
-      end
+      capture_log(fn ->
+        for i <- 1..10 do
+          Logger.warning("message #{i}")
+        end
+      end)
 
       LogStore.flush(@test_name)
 

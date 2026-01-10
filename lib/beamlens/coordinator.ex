@@ -343,9 +343,7 @@ defmodule Beamlens.Coordinator do
     keep_last = Keyword.get(opts, :compaction_keep_last, 5)
 
     {:summarize,
-      max_tokens: max_tokens,
-      keep_last: keep_last,
-      prompt: coordinator_compaction_prompt()}
+     max_tokens: max_tokens, keep_last: keep_last, prompt: coordinator_compaction_prompt()}
   end
 
   defp coordinator_compaction_prompt do

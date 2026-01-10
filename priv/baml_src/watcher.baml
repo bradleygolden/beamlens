@@ -193,7 +193,7 @@ test WatcherLoop_HealthySnapshot {
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
-      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":45.2,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
+      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
     callback_docs #"
 ### beam_get_memory()
@@ -210,16 +210,16 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-test WatcherLoop_HighMemory_Investigates {
+test WatcherLoop_HighProcessUtilization_Investigates {
   functions [WatcherLoop]
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
-      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":78.5,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
+      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":78.5,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
     callback_docs #"
-### beam_get_memory()
-Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+### beam_get_processes()
+Process/port counts: process_count, process_limit, port_count, port_limit
 
 ### beam_top_processes(limit, sort_by)
 Top N processes by "memory", "message_queue", or "reductions"
@@ -234,17 +234,17 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-test WatcherLoop_CriticalMemory_Alerts {
+test WatcherLoop_CriticalAtomUtilization_Alerts {
   functions [WatcherLoop]
   args {
     messages [
       { role "user", content #"Current state: warning"# },
-      { role "user", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":85.0,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# },
-      { role "user", content #"{"id":"snap2","captured_at":"2024-01-06T10:30:30Z","data":{"memory_utilization_pct":92.5,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":0,"schedulers_online":8}}"# }
+      { role "user", content #"{"id":"snap1","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":85.0,"scheduler_run_queue":0,"schedulers_online":8}}"# },
+      { role "user", content #"{"id":"snap2","captured_at":"2024-01-06T10:30:30Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":92.5,"scheduler_run_queue":0,"schedulers_online":8}}"# }
     ]
     callback_docs #"
-### beam_get_memory()
-Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
+### beam_get_atoms()
+Atom table: atom_count, atom_limit, atom_mb, atom_used_mb
 
 ### beam_top_processes(limit, sort_by)
 Top N processes by "memory", "message_queue", or "reductions"
@@ -263,7 +263,7 @@ test WatcherLoop_SchedulerContention {
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
-      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"memory_utilization_pct":45.2,"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":85,"schedulers_online":8}}"# }
+      { role "user", content #"{"id":"abc123","captured_at":"2024-01-06T10:30:00Z","data":{"process_utilization_pct":12.1,"port_utilization_pct":3.4,"atom_utilization_pct":8.9,"scheduler_run_queue":85,"schedulers_online":8}}"# }
     ]
     callback_docs #"
 ### beam_get_schedulers()

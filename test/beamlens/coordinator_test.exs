@@ -502,7 +502,6 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-
   describe "error handling" do
     test "LLM error stops loop" do
       ref = make_ref()
@@ -726,7 +725,9 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "compaction configuration" do
     defp start_coordinator_for_compaction_test(opts \\ []) do
-      name = Keyword.get(opts, :name, :"coordinator_compaction_#{:erlang.unique_integer([:positive])}")
+      name =
+        Keyword.get(opts, :name, :"coordinator_compaction_#{:erlang.unique_integer([:positive])}")
+
       opts = Keyword.put(opts, :name, name)
       Coordinator.start_link(opts)
     end

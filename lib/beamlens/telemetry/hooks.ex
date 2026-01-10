@@ -82,7 +82,7 @@ defmodule Beamlens.Telemetry.Hooks do
       Map.merge(metadata, %{strategy: strategy, config: config})
     )
 
-    :ok
+    {:cont, context}
   end
 
   @impl true
@@ -98,7 +98,7 @@ defmodule Beamlens.Telemetry.Hooks do
       metadata
     )
 
-    :ok
+    {:cont, context}
   end
 
   defp extract_trace_metadata(context) do
