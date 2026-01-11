@@ -53,7 +53,7 @@ defmodule Beamlens.Integration.OperatorTest do
         nil
       )
 
-      {:ok, _pid} = start_operator(context, skill_module: TestSkill)
+      {:ok, _pid} = start_operator(context, skill: TestSkill)
 
       assert_receive {:telemetry, :iteration_start, %{operator: :integration_test, iteration: 0}},
                      10_000
@@ -74,7 +74,7 @@ defmodule Beamlens.Integration.OperatorTest do
         nil
       )
 
-      {:ok, _pid} = start_operator(context, skill_module: TestSkill)
+      {:ok, _pid} = start_operator(context, skill: TestSkill)
 
       assert_receive {:telemetry, :llm_start, %{trace_id: trace_id}}, 15_000
       assert is_binary(trace_id)
@@ -95,7 +95,7 @@ defmodule Beamlens.Integration.OperatorTest do
         nil
       )
 
-      {:ok, _pid} = start_operator(context, skill_module: TestSkill)
+      {:ok, _pid} = start_operator(context, skill: TestSkill)
 
       assert_receive {:telemetry, :take_snapshot,
                       %{operator: :integration_test, snapshot_id: snapshot_id}},
@@ -122,7 +122,7 @@ defmodule Beamlens.Integration.OperatorTest do
         nil
       )
 
-      {:ok, _pid} = start_operator(context, skill_module: TestSkill)
+      {:ok, _pid} = start_operator(context, skill: TestSkill)
 
       iterations_received =
         Enum.reduce_while(1..3, [], fn _, acc ->
@@ -157,7 +157,7 @@ defmodule Beamlens.Integration.OperatorTest do
         nil
       )
 
-      {:ok, _pid} = start_operator(context, skill_module: TestSkill)
+      {:ok, _pid} = start_operator(context, skill: TestSkill)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 10_000
       assert_receive {:telemetry, :iteration_start, %{iteration: iteration}}, 10_000

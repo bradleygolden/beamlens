@@ -13,12 +13,12 @@ defmodule Beamlens.Skill.Ecto do
         use Beamlens.Skill.Ecto, repo: MyApp.Repo
       end
 
-  Then configure as a watcher:
+  Then configure as an operator:
 
       config :beamlens,
-        watchers: [
+        operators: [
           :beam,
-          [name: :ecto, skill_module: MyApp.EctoSkill]
+          [name: :ecto, skill: MyApp.EctoSkill]
         ]
 
   ## PII Safety

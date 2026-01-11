@@ -45,7 +45,7 @@ defmodule Beamlens.Operator.SupervisorTest do
       result =
         OperatorSupervisor.start_operator(supervisor,
           name: :custom,
-          skill_module: TestSkill,
+          skill: TestSkill,
           start_loop: false
         )
 
@@ -59,7 +59,7 @@ defmodule Beamlens.Operator.SupervisorTest do
       {:ok, pid} =
         OperatorSupervisor.start_operator(supervisor,
           name: :to_stop,
-          skill_module: TestSkill,
+          skill: TestSkill,
           start_loop: false
         )
 
@@ -85,13 +85,13 @@ defmodule Beamlens.Operator.SupervisorTest do
     test "returns list of operator statuses", %{supervisor: supervisor} do
       OperatorSupervisor.start_operator(supervisor,
         name: :operator1,
-        skill_module: TestSkill,
+        skill: TestSkill,
         start_loop: false
       )
 
       OperatorSupervisor.start_operator(supervisor,
         name: :operator2,
-        skill_module: TestSkill,
+        skill: TestSkill,
         start_loop: false
       )
 
@@ -108,7 +108,7 @@ defmodule Beamlens.Operator.SupervisorTest do
     test "returns operator status", %{supervisor: supervisor} do
       OperatorSupervisor.start_operator(supervisor,
         name: :status_test,
-        skill_module: TestSkill,
+        skill: TestSkill,
         start_loop: false
       )
 
@@ -130,7 +130,7 @@ defmodule Beamlens.Operator.SupervisorTest do
       {:ok, pid} =
         OperatorSupervisor.start_operator(
           supervisor,
-          [name: :registry_test, skill_module: TestSkill, start_loop: false],
+          [name: :registry_test, skill: TestSkill, start_loop: false],
           client_registry
         )
 

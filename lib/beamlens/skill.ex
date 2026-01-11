@@ -19,14 +19,14 @@ defmodule Beamlens.Skill do
       config :beamlens,
         operators: [
           :beam,  # built-in skill
-          [name: :redis, skill_module: MyApp.Skills.Redis]
+          [name: :redis, skill: MyApp.Skills.Redis]
         ]
 
   Or start it dynamically:
 
       Beamlens.Operator.Supervisor.start_operator([
         name: :redis,
-        skill_module: MyApp.Skills.Redis
+        skill: MyApp.Skills.Redis
       ])
 
   ## Callback Naming Conventions

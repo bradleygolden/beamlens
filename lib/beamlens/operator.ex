@@ -26,7 +26,7 @@ defmodule Beamlens.Operator do
 
       {:ok, pid} = Beamlens.Operator.start_link(
         name: {:via, Registry, {MyRegistry, :beam}},
-        skill_module: Beamlens.Skill.Beam
+        skill: Beamlens.Skill.Beam
       )
   """
 
@@ -53,7 +53,7 @@ defmodule Beamlens.Operator do
 
   defstruct [
     :name,
-    :skill_module,
+    :skill,
     :client,
     :client_registry,
     :context,
@@ -72,7 +72,7 @@ defmodule Beamlens.Operator do
   ## Options
 
     * `:name` - Optional process name for registration
-    * `:skill_module` - Required module implementing `Beamlens.Skill`
+    * `:skill` - Required module implementing `Beamlens.Skill`
     * `:client_registry` - Optional LLM provider configuration map
     * `:start_loop` - Whether to start the LLM loop on init (default: true)
     * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
@@ -111,15 +111,15 @@ defmodule Beamlens.Operator do
 
   @impl true
   def init(opts) do
-    skill_module = Keyword.fetch!(opts, :skill_module)
+    skill = Keyword.fetch!(opts, :skill)
     name = Keyword.get(opts, :name)
     client_registry = Keyword.get(opts, :client_registry)
     start_loop = Keyword.get(opts, :start_loop, true)
-    client = build_puck_client(skill_module, client_registry, opts)
+    client = build_puck_client(skill, client_registry, opts)
 
     state = %__MODULE__{
       name: name,
-      skill_module: skill_module,
+      skill: skill,
       client: client,
       client_registry: client_registry,
       context: Context.new(metadata: %{iteration: 0}),
@@ -194,7 +194,7 @@ defmodule Beamlens.Operator do
   @impl true
   def handle_call(:status, _from, state) do
     status = %{
-      operator: state.skill_module.id(),
+      operator: state.skill.id(),
       state: state.state,
       running: state.running
     }
@@ -350,7 +350,7 @@ defmodule Beamlens.Operator do
     emit_telemetry(:execute_start, state, %{trace_id: trace_id})
 
     result =
-      case Eval.eval(:lua, lua_code, callbacks: state.skill_module.callbacks()) do
+      case Eval.eval(:lua, lua_code, callbacks: state.skill.callbacks()) do
         {:ok, result} ->
           emit_telemetry(:execute_complete, state, %{trace_id: trace_id})
           result
@@ -405,7 +405,7 @@ defmodule Beamlens.Operator do
   end
 
   defp collect_snapshot(state) do
-    state.skill_module.snapshot()
+    state.skill.snapshot()
   end
 
   defp build_input(operator_state) do
@@ -414,7 +414,7 @@ defmodule Beamlens.Operator do
 
   defp build_alert(state, type, summary, severity, snapshots) do
     Alert.new(%{
-      operator: state.skill_module.id(),
+      operator: state.skill.id(),
       anomaly_type: type,
       severity: severity,
       summary: summary,
@@ -437,8 +437,8 @@ defmodule Beamlens.Operator do
     end
   end
 
-  defp build_puck_client(skill_module, client_registry, opts) do
-    callback_docs = skill_module.callback_docs()
+  defp build_puck_client(skill, client_registry, opts) do
+    callback_docs = skill.callback_docs()
 
     backend_config =
       %{
@@ -487,7 +487,7 @@ defmodule Beamlens.Operator do
       [:beamlens, :operator, event],
       %{system_time: System.system_time()},
       Map.merge(
-        %{operator: state.skill_module.id()},
+        %{operator: state.skill.id()},
         extra
       )
     )

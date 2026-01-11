@@ -10,7 +10,7 @@ defmodule Beamlens.Operator.Supervisor do
       config :beamlens,
         operators: [
           :beam,
-          [name: :custom, skill_module: MyApp.Skill.Custom]
+          [name: :custom, skill: MyApp.Skill.Custom]
         ]
 
   ## Operator Specifications
@@ -18,12 +18,12 @@ defmodule Beamlens.Operator.Supervisor do
   Operators can be specified in two forms:
 
     * `:skill` - Uses built-in skill module (e.g., `:beam` → `Beamlens.Skill.Beam`)
-    * `[name: atom, skill_module: module, ...]` - Custom skill module with options
+    * `[name: atom, skill: module, ...]` - Custom skill module with options
 
   ## Operator Options
 
     * `:name` - Required. Atom identifier for the operator
-    * `:skill_module` - Required. Module implementing `Beamlens.Skill`
+    * `:skill` - Required. Module implementing `Beamlens.Skill`
     * `:compaction_max_tokens` - Token threshold before compaction (default: 50,000)
     * `:compaction_keep_last` - Messages to keep after compaction (default: 5)
 
@@ -32,7 +32,7 @@ defmodule Beamlens.Operator.Supervisor do
       config :beamlens,
         operators: [
           :beam,
-          [name: :ets, skill_module: Beamlens.Skill.Ets,
+          [name: :ets, skill: Beamlens.Skill.Ets,
            compaction_max_tokens: 100_000,
            compaction_keep_last: 10]
         ]
@@ -94,7 +94,7 @@ defmodule Beamlens.Operator.Supervisor do
       {:ok, module} ->
         start_operator(
           supervisor,
-          [name: skill, skill_module: module],
+          [name: skill, skill: module],
           client_registry
         )
 
@@ -105,14 +105,14 @@ defmodule Beamlens.Operator.Supervisor do
 
   def start_operator(supervisor, opts, client_registry) when is_list(opts) do
     name = Keyword.fetch!(opts, :name)
-    skill_module = Keyword.fetch!(opts, :skill_module)
+    skill = Keyword.fetch!(opts, :skill)
 
     operator_opts =
       opts
-      |> Keyword.drop([:name, :skill_module])
+      |> Keyword.drop([:name, :skill])
       |> Keyword.merge(
         name: via_registry(name),
-        skill_module: skill_module
+        skill: skill
       )
 
     operator_opts =

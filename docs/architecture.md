@@ -211,7 +211,7 @@ Operators and the Coordinator use context compaction to run indefinitely without
 ```elixir
 {Beamlens, operators: [
   :beam,
-  [name: :ets, skill_module: Beamlens.Skill.Ets,
+  [name: :ets, skill: Beamlens.Skill.Ets,
    compaction_max_tokens: 100_000,
    compaction_keep_last: 10]
 ]}
@@ -396,7 +396,7 @@ children = [
 
   # Beamlens with Ecto operator
   {Beamlens, operators: [
-    [name: :ecto, skill_module: MyApp.EctoSkill]
+    [name: :ecto, skill: MyApp.EctoSkill]
   ]}
 ]
 ```
@@ -508,6 +508,6 @@ Register in supervision tree:
 ```elixir
 {Beamlens, operators: [
   :beam,
-  [name: :postgres, skill_module: MyApp.Skills.Postgres]
+  [name: :postgres, skill: MyApp.Skills.Postgres]
 ]}
 ```

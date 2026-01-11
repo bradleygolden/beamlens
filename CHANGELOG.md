@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Beamlens.Skill` module documentation now includes callback naming conventions, return type requirements, arity patterns, and complete examples
 - README now uses consistent "operator" terminology (previously mixed "watcher" and "operator")
-- Rename "domain" to "skill" throughout the codebase — `Beamlens.Domain` is now `Beamlens.Skill`, `domain_module` option is now `skill_module`, `domain/0` callback is now `id/0`, `builtin_domains/0` is now `builtin_skills/0`
+- Rename "domain" to "skill" throughout the codebase — `Beamlens.Domain` is now `Beamlens.Skill`, `domain_module` option is now `skill`, `domain/0` callback is now `id/0`, `builtin_domains/0` is now `builtin_skills/0`
 - Rename "watcher" to "operator" throughout the codebase — `Beamlens.Watcher` is now `Beamlens.Operator`, config key `:watchers` is now `:operators`, telemetry events use `[:beamlens, :operator, *]`
 - Think telemetry events now include `thought` in metadata
 - Operators and coordinator no longer have iteration limits (can run indefinitely with compaction)

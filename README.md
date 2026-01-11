@@ -98,7 +98,7 @@ children = [
 
   {Beamlens, operators: [
     :beam,
-    [name: :ecto, skill_module: MyApp.EctoSkill]
+    [name: :ecto, skill: MyApp.EctoSkill]
   ]}
 ]
 ```
@@ -174,7 +174,7 @@ Register your skill:
 ```elixir
 {Beamlens, operators: [
   :beam,
-  [name: :redis, skill_module: MyApp.Skills.Redis]
+  [name: :redis, skill: MyApp.Skills.Redis]
 ]}
 ```
 
@@ -222,7 +222,7 @@ Operators use context compaction to run indefinitely. When the context grows too
 ```elixir
 {Beamlens, operators: [
   :beam,
-  [name: :ets, skill_module: Beamlens.Skill.Ets,
+  [name: :ets, skill: Beamlens.Skill.Ets,
    compaction_max_tokens: 100_000,
    compaction_keep_last: 10]
 ]}

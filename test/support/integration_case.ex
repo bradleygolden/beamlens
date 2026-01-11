@@ -19,7 +19,7 @@ defmodule Beamlens.IntegrationCase do
 
   ## Example
 
-      {:ok, pid} = start_operator(context, skill_module: MySkill)
+      {:ok, pid} = start_operator(context, skill: MySkill)
 
   """
   def start_operator(context, opts) do

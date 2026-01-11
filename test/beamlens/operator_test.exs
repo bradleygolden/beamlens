@@ -34,7 +34,7 @@ defmodule Beamlens.OperatorTest do
   end
 
   defp start_operator_without_loop(opts \\ []) do
-    opts = Keyword.merge([skill_module: TestSkill, start_loop: false], opts)
+    opts = Keyword.merge([skill: TestSkill, start_loop: false], opts)
     Operator.start_link(opts)
   end
 
@@ -137,11 +137,11 @@ defmodule Beamlens.OperatorTest do
       Operator.stop(pid)
     end
 
-    test "stores skill_module in state" do
+    test "stores skill in state" do
       {:ok, pid} = start_operator_without_loop()
 
       state = :sys.get_state(pid)
-      assert state.skill_module == TestSkill
+      assert state.skill == TestSkill
 
       Operator.stop(pid)
     end
