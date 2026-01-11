@@ -2,7 +2,7 @@ defmodule Beamlens.Telemetry do
   @moduledoc """
   Telemetry events emitted by BeamLens.
 
-  All events include a `trace_id` for correlating events within a single watcher run.
+  All events include a `trace_id` for correlating events within a single operator run.
   Events follow the standard `:start`, `:stop`, `:exception` lifecycle pattern
   used by Phoenix, Oban, and other Elixir libraries.
 
@@ -48,71 +48,71 @@ defmodule Beamlens.Telemetry do
     - Metadata: `%{trace_id: String.t(), iteration: integer, tool_name: String.t(),
                    kind: atom(), reason: term(), stacktrace: list()}`
 
-  ## Watcher Events
+  ## Operator Events
 
-  * `[:beamlens, :watcher, :started]` - Watcher server started
+  * `[:beamlens, :operator, :started]` - Operator server started
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom()}`
+    - Metadata: `%{operator: atom()}`
 
-  * `[:beamlens, :watcher, :iteration_start]` - Watcher iteration starting
+  * `[:beamlens, :operator, :iteration_start]` - Operator iteration starting
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), iteration: integer, watcher_state: atom()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), iteration: integer, operator_state: atom()}`
 
-  * `[:beamlens, :watcher, :state_change]` - Watcher state changed
+  * `[:beamlens, :operator, :state_change]` - Operator state changed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), from: atom(), to: atom(), reason: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), from: atom(), to: atom(), reason: String.t()}`
 
-  * `[:beamlens, :watcher, :alert_fired]` - Watcher fired an alert
+  * `[:beamlens, :operator, :alert_fired]` - Operator fired an alert
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), alert: Alert.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), alert: Alert.t()}`
 
-  * `[:beamlens, :watcher, :get_alerts]` - Watcher retrieved alerts
+  * `[:beamlens, :operator, :get_alerts]` - Operator retrieved alerts
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), count: integer}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), count: integer}`
 
-  * `[:beamlens, :watcher, :take_snapshot]` - Watcher captured a snapshot
+  * `[:beamlens, :operator, :take_snapshot]` - Operator captured a snapshot
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), snapshot_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), snapshot_id: String.t()}`
 
-  * `[:beamlens, :watcher, :get_snapshot]` - Watcher retrieved a snapshot
+  * `[:beamlens, :operator, :get_snapshot]` - Operator retrieved a snapshot
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), snapshot_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), snapshot_id: String.t()}`
 
-  * `[:beamlens, :watcher, :get_snapshots]` - Watcher retrieved multiple snapshots
+  * `[:beamlens, :operator, :get_snapshots]` - Operator retrieved multiple snapshots
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), count: integer}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), count: integer}`
 
-  * `[:beamlens, :watcher, :execute_start]` - Watcher Lua execution starting
+  * `[:beamlens, :operator, :execute_start]` - Operator Lua execution starting
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t()}`
 
-  * `[:beamlens, :watcher, :execute_complete]` - Watcher Lua execution completed
+  * `[:beamlens, :operator, :execute_complete]` - Operator Lua execution completed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t()}`
 
-  * `[:beamlens, :watcher, :execute_error]` - Watcher Lua execution failed
+  * `[:beamlens, :operator, :execute_error]` - Operator Lua execution failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: term()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term()}`
 
-  * `[:beamlens, :watcher, :wait]` - Watcher sleeping
+  * `[:beamlens, :operator, :wait]` - Operator sleeping
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), ms: integer}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), ms: integer}`
 
-  * `[:beamlens, :watcher, :llm_error]` - Watcher LLM call failed
+  * `[:beamlens, :operator, :llm_error]` - Operator LLM call failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: term()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term()}`
 
-  * `[:beamlens, :watcher, :loop_stopped]` - Watcher loop stopped normally
+  * `[:beamlens, :operator, :loop_stopped]` - Operator loop stopped normally
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), final_state: atom()}`
+    - Metadata: `%{operator: atom(), final_state: atom()}`
 
-  * `[:beamlens, :watcher, :alert_failed]` - Alert creation failed
+  * `[:beamlens, :operator, :alert_failed]` - Alert creation failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), trace_id: String.t(), reason: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: String.t()}`
 
-  * `[:beamlens, :watcher, :unexpected_message]` - GenServer received unexpected message
+  * `[:beamlens, :operator, :unexpected_message]` - GenServer received unexpected message
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{watcher: atom(), message: String.t()}`
+    - Metadata: `%{operator: atom(), message: String.t()}`
 
   ## Coordinator Events
 
@@ -178,7 +178,7 @@ defmodule Beamlens.Telemetry do
 
       :telemetry.attach(
         "beamlens-alerts",
-        [:beamlens, :watcher, :alert_fired],
+        [:beamlens, :operator, :alert_fired],
         fn _event, _measurements, metadata, _config ->
           Logger.warning("BeamLens alert: \#{metadata.alert.summary}")
         end,
@@ -206,22 +206,22 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :tool, :start],
       [:beamlens, :tool, :stop],
       [:beamlens, :tool, :exception],
-      [:beamlens, :watcher, :started],
-      [:beamlens, :watcher, :iteration_start],
-      [:beamlens, :watcher, :state_change],
-      [:beamlens, :watcher, :alert_fired],
-      [:beamlens, :watcher, :alert_failed],
-      [:beamlens, :watcher, :get_alerts],
-      [:beamlens, :watcher, :take_snapshot],
-      [:beamlens, :watcher, :get_snapshot],
-      [:beamlens, :watcher, :get_snapshots],
-      [:beamlens, :watcher, :execute_start],
-      [:beamlens, :watcher, :execute_complete],
-      [:beamlens, :watcher, :execute_error],
-      [:beamlens, :watcher, :wait],
-      [:beamlens, :watcher, :llm_error],
-      [:beamlens, :watcher, :loop_stopped],
-      [:beamlens, :watcher, :unexpected_message],
+      [:beamlens, :operator, :started],
+      [:beamlens, :operator, :iteration_start],
+      [:beamlens, :operator, :state_change],
+      [:beamlens, :operator, :alert_fired],
+      [:beamlens, :operator, :alert_failed],
+      [:beamlens, :operator, :get_alerts],
+      [:beamlens, :operator, :take_snapshot],
+      [:beamlens, :operator, :get_snapshot],
+      [:beamlens, :operator, :get_snapshots],
+      [:beamlens, :operator, :execute_start],
+      [:beamlens, :operator, :execute_complete],
+      [:beamlens, :operator, :execute_error],
+      [:beamlens, :operator, :wait],
+      [:beamlens, :operator, :llm_error],
+      [:beamlens, :operator, :loop_stopped],
+      [:beamlens, :operator, :unexpected_message],
       [:beamlens, :coordinator, :started],
       [:beamlens, :coordinator, :alert_received],
       [:beamlens, :coordinator, :iteration_start],
@@ -240,7 +240,7 @@ defmodule Beamlens.Telemetry do
   end
 
   @doc """
-  Generates a unique trace ID for a watcher run.
+  Generates a unique trace ID for an operator run.
   """
   def generate_trace_id do
     :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)

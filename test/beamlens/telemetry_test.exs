@@ -35,7 +35,7 @@ defmodule Beamlens.TelemetryTest do
       end
     end
 
-    test "includes llm, tool, and watcher events" do
+    test "includes llm, tool, and operator events" do
       events = Telemetry.event_names()
 
       assert [:beamlens, :llm, :start] in events
@@ -44,9 +44,9 @@ defmodule Beamlens.TelemetryTest do
       assert [:beamlens, :tool, :start] in events
       assert [:beamlens, :tool, :stop] in events
       assert [:beamlens, :tool, :exception] in events
-      assert [:beamlens, :watcher, :started] in events
-      assert [:beamlens, :watcher, :alert_fired] in events
-      assert [:beamlens, :watcher, :state_change] in events
+      assert [:beamlens, :operator, :started] in events
+      assert [:beamlens, :operator, :alert_fired] in events
+      assert [:beamlens, :operator, :state_change] in events
     end
   end
 
