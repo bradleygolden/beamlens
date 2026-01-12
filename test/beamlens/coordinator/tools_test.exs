@@ -5,89 +5,89 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
   alias Beamlens.Coordinator.Tools.{
     Done,
-    GetAlerts,
+    GetNotifications,
     ProduceInsight,
     Think,
-    UpdateAlertStatuses
+    UpdateNotificationStatuses
   }
 
-  describe "schema/0 - GetAlerts" do
-    test "parses get_alerts without status" do
+  describe "schema/0 - GetNotifications" do
+    test "parses get_notifications without status" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts"}
+      input = %{intent: "get_notifications"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
       assert result.status == nil
     end
 
-    test "parses get_alerts with unread status" do
+    test "parses get_notifications with unread status" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts", status: "unread"}
+      input = %{intent: "get_notifications", status: "unread"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
       assert result.status == :unread
     end
 
-    test "parses get_alerts with acknowledged status" do
+    test "parses get_notifications with acknowledged status" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts", status: "acknowledged"}
+      input = %{intent: "get_notifications", status: "acknowledged"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
       assert result.status == :acknowledged
     end
 
-    test "parses get_alerts with resolved status" do
+    test "parses get_notifications with resolved status" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts", status: "resolved"}
+      input = %{intent: "get_notifications", status: "resolved"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
       assert result.status == :resolved
     end
 
-    test "parses get_alerts with all status (becomes nil)" do
+    test "parses get_notifications with all status (becomes nil)" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts", status: "all"}
+      input = %{intent: "get_notifications", status: "all"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
       assert result.status == nil
     end
   end
 
-  describe "schema/0 - UpdateAlertStatuses" do
-    test "parses update_alert_statuses with all fields" do
+  describe "schema/0 - UpdateNotificationStatuses" do
+    test "parses update_notification_statuses with all fields" do
       schema = Tools.schema()
 
       input = %{
-        intent: "update_alert_statuses",
-        alert_ids: ["alert1", "alert2"],
+        intent: "update_notification_statuses",
+        notification_ids: ["notification1", "notification2"],
         status: "acknowledged",
-        reason: "Processing these alerts"
+        reason: "Processing these notifications"
       }
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %UpdateAlertStatuses{} = result
-      assert result.alert_ids == ["alert1", "alert2"]
+      assert %UpdateNotificationStatuses{} = result
+      assert result.notification_ids == ["notification1", "notification2"]
       assert result.status == :acknowledged
-      assert result.reason == "Processing these alerts"
+      assert result.reason == "Processing these notifications"
     end
 
-    test "parses update_alert_statuses without optional reason" do
+    test "parses update_notification_statuses without optional reason" do
       schema = Tools.schema()
 
       input = %{
-        intent: "update_alert_statuses",
-        alert_ids: ["alert1"],
+        intent: "update_notification_statuses",
+        notification_ids: ["notification1"],
         status: "resolved"
       }
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %UpdateAlertStatuses{} = result
-      assert result.alert_ids == ["alert1"]
+      assert %UpdateNotificationStatuses{} = result
+      assert result.notification_ids == ["notification1"]
       assert result.status == :resolved
       assert result.reason == nil
     end
@@ -97,8 +97,8 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       for status <- ["acknowledged", "resolved"] do
         input = %{
-          intent: "update_alert_statuses",
-          alert_ids: ["a1"],
+          intent: "update_notification_statuses",
+          notification_ids: ["n1"],
           status: status
         }
 
@@ -114,7 +114,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       input = %{
         intent: "produce_insight",
-        alert_ids: ["alert1", "alert2"],
+        notification_ids: ["notification1", "notification2"],
         correlation_type: "causal",
         summary: "Memory spike caused scheduler contention",
         root_cause_hypothesis: "Unbounded ETS table growth",
@@ -123,7 +123,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       assert {:ok, result} = Zoi.parse(schema, input)
       assert %ProduceInsight{} = result
-      assert result.alert_ids == ["alert1", "alert2"]
+      assert result.notification_ids == ["notification1", "notification2"]
       assert result.correlation_type == :causal
       assert result.summary == "Memory spike caused scheduler contention"
       assert result.root_cause_hypothesis == "Unbounded ETS table growth"
@@ -135,9 +135,9 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       input = %{
         intent: "produce_insight",
-        alert_ids: ["alert1"],
+        notification_ids: ["notification1"],
         correlation_type: "temporal",
-        summary: "Alerts close in time",
+        summary: "Notifications close in time",
         confidence: "low"
       }
 
@@ -152,7 +152,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
       for correlation_type <- ["temporal", "causal", "symptomatic"] do
         input = %{
           intent: "produce_insight",
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           correlation_type: correlation_type,
           summary: "test",
           confidence: "low"
@@ -169,7 +169,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
       for confidence <- ["high", "medium", "low"] do
         input = %{
           intent: "produce_insight",
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           correlation_type: "temporal",
           summary: "test",
           confidence: confidence
@@ -194,11 +194,11 @@ defmodule Beamlens.Coordinator.ToolsTest do
   describe "schema/0 - Think" do
     test "parses think" do
       schema = Tools.schema()
-      input = %{intent: "think", thought: "These alerts seem related..."}
+      input = %{intent: "think", thought: "These notifications seem related..."}
 
       assert {:ok, result} = Zoi.parse(schema, input)
       assert %Think{} = result
-      assert result.thought == "These alerts seem related..."
+      assert result.thought == "These notifications seem related..."
     end
   end
 
@@ -210,11 +210,11 @@ defmodule Beamlens.Coordinator.ToolsTest do
       assert {:error, _} = Zoi.parse(schema, input)
     end
 
-    test "rejects update_alert_statuses with missing alert_ids" do
+    test "rejects update_notification_statuses with missing notification_ids" do
       schema = Tools.schema()
 
       input = %{
-        intent: "update_alert_statuses",
+        intent: "update_notification_statuses",
         status: "acknowledged"
       }
 
@@ -226,7 +226,7 @@ defmodule Beamlens.Coordinator.ToolsTest do
 
       input = %{
         intent: "produce_insight",
-        alert_ids: ["a1"]
+        notification_ids: ["n1"]
       }
 
       assert {:error, _} = Zoi.parse(schema, input)

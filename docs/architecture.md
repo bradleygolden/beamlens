@@ -1,6 +1,6 @@
 # Architecture
 
-BeamLens uses an **autonomous operator** architecture where specialized operators run continuous LLM-driven loops to monitor skills and detect anomalies. Alerts are emitted via telemetry.
+BeamLens uses an **autonomous operator** architecture where specialized operators run continuous LLM-driven loops to monitor skills and detect anomalies. Notifications are emitted via telemetry.
 
 ## Supervision Tree
 
@@ -27,7 +27,7 @@ graph TD
     OS --> O3[Operator: custom]
 ```
 
-Each operator runs independently. If one crashes, others continue operating. The Coordinator receives alerts from all operators and correlates them into insights.
+Each operator runs independently. If one crashes, others continue operating. The Coordinator receives notifications from all operators and correlates them into insights.
 
 > **Note:** LogStore and ExceptionStore (shown with dashed lines) are only started when their respective operators (`:logger`, `:exception`) are configured. LogStore captures application logs via an Erlang `:logger` handler. ExceptionStore captures exceptions via Tower's reporter system.
 
@@ -41,12 +41,12 @@ flowchart TD
     SNAP --> LLM[LLM selects tool]
     LLM --> EXEC[Execute tool]
     EXEC --> |SetState| STATE[Update state]
-    EXEC --> |FireAlert| ALERT[Emit telemetry]
+    EXEC --> |SendNotification| NOTIFY[Emit telemetry]
     EXEC --> |TakeSnapshot| CAPTURE[Store snapshot]
     EXEC --> |Execute| LUA[Run Lua code]
     EXEC --> |Wait| SLEEP[Sleep ms]
     STATE --> LLM
-    ALERT --> LLM
+    NOTIFY --> LLM
     CAPTURE --> LLM
     LUA --> LLM
     SLEEP --> LLM
@@ -69,13 +69,13 @@ State transitions are driven by the LLM via the `set_state` tool.
 
 ## Coordinator
 
-The Coordinator is a GenServer that receives alerts from all operators and correlates them into unified insights. When operators fire alerts via telemetry, the Coordinator queues them and runs an LLM-driven analysis loop.
+The Coordinator is a GenServer that receives notifications from all operators and correlates them into unified insights. When operators send notifications via telemetry, the Coordinator queues them and runs an LLM-driven analysis loop.
 
-### Alert States
+### Notification States
 
 | State | Description |
 |-------|-------------|
-| `unread` | New alert, not yet processed |
+| `unread` | New notification, not yet processed |
 | `acknowledged` | Currently being analyzed |
 | `resolved` | Processed (correlated into insight or dismissed) |
 
@@ -83,21 +83,21 @@ The Coordinator is a GenServer that receives alerts from all operators and corre
 
 | Tool | Description |
 |------|-------------|
-| `get_alerts` | Query alerts, optionally filtered by status |
-| `update_alert_statuses` | Set status on multiple alerts |
-| `produce_insight` | Create insight correlating alerts (auto-resolves them) |
-| `done` | End processing, wait for next alert |
+| `get_notifications` | Query notifications, optionally filtered by status |
+| `update_notification_statuses` | Set status on multiple notifications |
+| `produce_insight` | Create insight correlating notifications (auto-resolves them) |
+| `done` | End processing, wait for next notification |
 | `think` | Reason through complex decisions before acting |
 
 ### Correlation Types
 
-When producing insights, the Coordinator classifies how alerts are related:
+When producing insights, the Coordinator classifies how notifications are related:
 
 | Type | Description |
 |------|-------------|
-| `temporal` | Alerts occurred close in time, possibly related |
-| `causal` | One alert directly caused another (A → B) |
-| `symptomatic` | Alerts share a common hidden cause (A ← X → B) |
+| `temporal` | Notifications occurred close in time, possibly related |
+| `causal` | One notification directly caused another (A → B) |
+| `symptomatic` | Notifications share a common hidden cause (A ← X → B) |
 
 ### Subscribe to Insights
 
@@ -113,8 +113,8 @@ end, nil)
 | Tool | Description |
 |------|-------------|
 | `set_state` | Update operator state with reason |
-| `fire_alert` | Create alert with referenced snapshots |
-| `get_alerts` | Retrieve previous alerts for correlation |
+| `send_notification` | Create notification with referenced snapshots |
+| `get_notifications` | Retrieve previous notifications for correlation |
 | `take_snapshot` | Capture current metrics with unique ID |
 | `get_snapshot` | Retrieve specific snapshot by ID |
 | `get_snapshots` | Retrieve multiple snapshots with pagination |
@@ -144,24 +144,24 @@ Operators and the Coordinator emit telemetry events for observability. Key event
 |-------|-------------|
 | `[:beamlens, :operator, :started]` | Operator initialized |
 | `[:beamlens, :operator, :state_change]` | State transitioned |
-| `[:beamlens, :operator, :alert_fired]` | Alert created |
+| `[:beamlens, :operator, :notification_sent]` | Notification created |
 | `[:beamlens, :operator, :iteration_start]` | Loop iteration began |
 | `[:beamlens, :coordinator, :started]` | Coordinator initialized |
-| `[:beamlens, :coordinator, :alert_received]` | Alert queued for correlation |
+| `[:beamlens, :coordinator, :notification_received]` | Notification queued for correlation |
 | `[:beamlens, :coordinator, :iteration_start]` | Analysis loop iteration began |
-| `[:beamlens, :coordinator, :insight_produced]` | Insight created from correlated alerts |
+| `[:beamlens, :coordinator, :insight_produced]` | Insight created from correlated notifications |
 | `[:beamlens, :coordinator, :done]` | Analysis loop completed |
 | `[:beamlens, :llm, :start]` | LLM call started |
 | `[:beamlens, :llm, :stop]` | LLM call completed |
 | `[:beamlens, :compaction, :start]` | Context compaction started |
 | `[:beamlens, :compaction, :stop]` | Context compaction completed |
 
-Subscribe to alerts:
+Subscribe to notifications:
 
 ```elixir
-:telemetry.attach("my-alerts", [:beamlens, :operator, :alert_fired], fn
-  _event, _measurements, %{alert: alert}, _config ->
-    Logger.warning("Alert: #{alert.summary}")
+:telemetry.attach("my-notifications", [:beamlens, :operator, :notification_sent], fn
+  _event, _measurements, %{notification: notification}, _config ->
+    Logger.warning("Notification: #{notification.summary}")
 end, nil)
 ```
 
@@ -172,7 +172,7 @@ See `Beamlens.Telemetry` for the complete event list.
 BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Two BAML functions handle the agent loops:
 
 - **OperatorLoop**: Continuous agent loop that observes metrics and selects tools
-- **CoordinatorLoop**: Alert correlation agent that identifies patterns across operators
+- **CoordinatorLoop**: Notification correlation agent that identifies patterns across operators
 
 Default LLM: Anthropic Claude Haiku (`claude-haiku-4-5-20251001`)
 
@@ -219,9 +219,9 @@ Operators and the Coordinator use context compaction to run indefinitely without
 
 The compaction prompt preserves:
 - Anomalies detected and trend direction
-- Snapshot IDs (exact values required for alert references)
+- Snapshot IDs (exact values required for notification references)
 - Key metric values that informed decisions
-- Alerts fired and their reasons
+- Notifications sent and their reasons
 
 Compaction events are emitted via telemetry: `[:beamlens, :compaction, :start]` and `[:beamlens, :compaction, :stop]`.
 

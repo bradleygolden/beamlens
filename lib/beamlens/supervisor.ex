@@ -8,9 +8,9 @@ defmodule Beamlens.Supervisor do
     * `Beamlens.OperatorRegistry` - Registry for operator processes
     * `Beamlens.Skill.Logger.LogStore` - Log buffer (when `:logger` operator enabled)
     * `Beamlens.Skill.Exception.ExceptionStore` - Exception buffer (when `:exception` operator enabled)
-    * `Beamlens.AlertForwarder` - Cross-node alert broadcasting (when `:pubsub` provided)
+    * `Beamlens.NotificationForwarder` - Cross-node notification broadcasting (when `:pubsub` provided)
     * `Beamlens.Operator.Supervisor` - DynamicSupervisor for operators
-    * `Beamlens.Coordinator` - Alert correlation and insight generation
+    * `Beamlens.Coordinator` - Notification correlation and insight generation
 
   ## Single Node Configuration
 
@@ -23,7 +23,7 @@ defmodule Beamlens.Supervisor do
   ## Clustered Configuration
 
   When running in a cluster, provide a `:pubsub` option to enable cross-node
-  alert propagation and automatic singleton coordination:
+  notification propagation and automatic singleton coordination:
 
       children = [
         {Beamlens,
@@ -33,9 +33,9 @@ defmodule Beamlens.Supervisor do
       ]
 
   When `pubsub` is provided:
-    * `Beamlens.AlertForwarder` is started to broadcast alerts to PubSub
+    * `Beamlens.NotificationForwarder` is started to broadcast notifications to PubSub
     * `Beamlens.Coordinator` is wrapped in Highlander for cluster singleton
-    * Coordinator subscribes to PubSub for cross-node alerts
+    * Coordinator subscribes to PubSub for cross-node notifications
 
   ## Options
 
@@ -52,8 +52,8 @@ defmodule Beamlens.Supervisor do
 
   use Supervisor
 
-  alias Beamlens.AlertForwarder
   alias Beamlens.Coordinator
+  alias Beamlens.NotificationForwarder
   alias Beamlens.Operator.Supervisor, as: OperatorSupervisor
   alias Beamlens.Skill.Exception.ExceptionStore
   alias Beamlens.Skill.Logger.LogStore
@@ -68,6 +68,9 @@ defmodule Beamlens.Supervisor do
     client_registry = Keyword.get(opts, :client_registry)
     pubsub = Keyword.get(opts, :pubsub)
 
+    # Store configured operators so they can be listed even when stopped
+    :persistent_term.put({__MODULE__, :operators}, operators)
+
     coordinator_opts =
       opts
       |> Keyword.get(:coordinator, [])
@@ -79,7 +82,7 @@ defmodule Beamlens.Supervisor do
          {Task.Supervisor, name: Beamlens.TaskSupervisor},
          {Registry, keys: :unique, name: Beamlens.OperatorRegistry}
        ] ++
-         alert_forwarder_children(pubsub) ++
+         notification_forwarder_children(pubsub) ++
          logger_children(operators) ++
          exception_children(operators) ++
          [
@@ -95,8 +98,8 @@ defmodule Beamlens.Supervisor do
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
-  defp alert_forwarder_children(nil), do: []
-  defp alert_forwarder_children(pubsub), do: [{AlertForwarder, pubsub: pubsub}]
+  defp notification_forwarder_children(nil), do: []
+  defp notification_forwarder_children(pubsub), do: [{NotificationForwarder, pubsub: pubsub}]
 
   defp coordinator_child(opts, nil) do
     {Coordinator, opts}

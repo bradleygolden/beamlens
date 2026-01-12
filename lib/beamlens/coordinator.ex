@@ -1,14 +1,14 @@
 defmodule Beamlens.Coordinator do
   @moduledoc """
-  GenServer that correlates alerts from operators into insights.
+  GenServer that correlates notifications from operators into insights.
 
-  Subscribes to `[:beamlens, :operator, :alert_fired]` telemetry events and
-  manages an alert inbox with status tracking. Runs an LLM tool-calling loop
-  to identify patterns across alerts and emit insights.
+  Subscribes to `[:beamlens, :operator, :notification_sent]` telemetry events and
+  manages a notification inbox with status tracking. Runs an LLM tool-calling loop
+  to identify patterns across notifications and emit insights.
 
-  ## Alert States
+  ## Notification States
 
-  - `:unread` - New alert, not yet processed
+  - `:unread` - New notification, not yet processed
   - `:acknowledged` - Currently being analyzed
   - `:resolved` - Processed (correlated into insight or dismissed)
 
@@ -20,7 +20,7 @@ defmodule Beamlens.Coordinator do
 
   ## Clustered Example
 
-  When running in a cluster with PubSub, the Coordinator can receive alerts
+  When running in a cluster with PubSub, the Coordinator can receive notifications
   from other nodes:
 
       {:ok, pid} = Beamlens.Coordinator.start_link(
@@ -38,15 +38,23 @@ defmodule Beamlens.Coordinator do
 
   use GenServer
 
-  alias Beamlens.AlertForwarder
   alias Beamlens.Coordinator.{Insight, Tools}
-  alias Beamlens.Coordinator.Tools.{Done, GetAlerts, ProduceInsight, Think, UpdateAlertStatuses}
+
+  alias Beamlens.Coordinator.Tools.{
+    Done,
+    GetNotifications,
+    ProduceInsight,
+    Think,
+    UpdateNotificationStatuses
+  }
+
   alias Beamlens.LLM.Utils
-  alias Beamlens.Operator.Alert
+  alias Beamlens.NotificationForwarder
+  alias Beamlens.Operator.Notification
   alias Beamlens.Telemetry
   alias Puck.Context
 
-  @telemetry_handler_id "beamlens-coordinator-alerts"
+  @telemetry_handler_id "beamlens-coordinator-notifications"
 
   defstruct [
     :client,
@@ -55,7 +63,7 @@ defmodule Beamlens.Coordinator do
     :pending_task,
     :pending_trace_id,
     :pubsub,
-    alerts: %{},
+    notifications: %{},
     iteration: 0,
     running: false
   ]
@@ -67,7 +75,7 @@ defmodule Beamlens.Coordinator do
 
     * `:name` - Optional process name for registration (default: `__MODULE__`)
     * `:client_registry` - Optional LLM provider configuration map
-    * `:pubsub` - Phoenix.PubSub module for cross-node alerts (optional)
+    * `:pubsub` - Phoenix.PubSub module for cross-node notifications (optional)
     * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
     * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
 
@@ -91,13 +99,13 @@ defmodule Beamlens.Coordinator do
 
     :telemetry.attach(
       @telemetry_handler_id,
-      [:beamlens, :operator, :alert_fired],
+      [:beamlens, :operator, :notification_sent],
       &__MODULE__.handle_telemetry_event/4,
       %{coordinator: self()}
     )
 
     if pubsub do
-      Phoenix.PubSub.subscribe(pubsub, AlertForwarder.pubsub_topic())
+      Phoenix.PubSub.subscribe(pubsub, NotificationForwarder.pubsub_topic())
     end
 
     state = %__MODULE__{
@@ -128,18 +136,23 @@ defmodule Beamlens.Coordinator do
     :telemetry.execute(
       [:beamlens, :coordinator, :takeover],
       %{system_time: System.system_time()},
-      %{alert_count: map_size(state.alerts)}
+      %{notification_count: map_size(state.notifications)}
     )
   end
 
   defp maybe_emit_takeover(_reason, _state), do: :ok
 
   @impl true
-  def handle_cast({:alert_received, %Alert{} = alert}, state) do
-    new_alerts = Map.put(state.alerts, alert.id, %{alert: alert, status: :unread})
-    new_state = %{state | alerts: new_alerts}
+  def handle_cast({:notification_received, %Notification{} = notification}, state) do
+    new_notifications =
+      Map.put(state.notifications, notification.id, %{notification: notification, status: :unread})
 
-    emit_telemetry(:alert_received, new_state, %{alert_id: alert.id, operator: alert.operator})
+    new_state = %{state | notifications: new_notifications}
+
+    emit_telemetry(:notification_received, new_state, %{
+      notification_id: notification.id,
+      operator: notification.operator
+    })
 
     if state.running do
       {:noreply, new_state}
@@ -165,7 +178,7 @@ defmodule Beamlens.Coordinator do
 
     task =
       Task.async(fn ->
-        Puck.call(state.client, "Process alerts", context, output_schema: Tools.schema())
+        Puck.call(state.client, "Process notifications", context, output_schema: Tools.schema())
       end)
 
     {:noreply, %{state | pending_task: task, pending_trace_id: trace_id}}
@@ -178,7 +191,8 @@ defmodule Beamlens.Coordinator do
 
     case result do
       {:ok, response, new_context} ->
-        handle_action(response.content, %{state | context: new_context}, state.pending_trace_id)
+        parsed = ensure_parsed(response.content)
+        handle_action(parsed, %{state | context: new_context}, state.pending_trace_id)
 
       {:error, reason} ->
         emit_telemetry(:llm_error, state, %{trace_id: state.pending_trace_id, reason: reason})
@@ -195,18 +209,23 @@ defmodule Beamlens.Coordinator do
     {:noreply, %{state | pending_task: nil, pending_trace_id: nil, running: false}}
   end
 
-  def handle_info({:beamlens_alert, %Alert{} = alert, source_node}, state) do
+  def handle_info({:beamlens_notification, %Notification{} = notification, source_node}, state) do
     if source_node == node() do
       {:noreply, state}
     else
-      emit_telemetry(:remote_alert_received, state, %{
-        alert_id: alert.id,
-        operator: alert.operator,
+      emit_telemetry(:remote_notification_received, state, %{
+        notification_id: notification.id,
+        operator: notification.operator,
         source_node: source_node
       })
 
-      new_alerts = Map.put(state.alerts, alert.id, %{alert: alert, status: :unread})
-      new_state = %{state | alerts: new_alerts}
+      new_notifications =
+        Map.put(state.notifications, notification.id, %{
+          notification: notification,
+          status: :unread
+        })
+
+      new_state = %{state | notifications: new_notifications}
 
       if state.running do
         {:noreply, new_state}
@@ -226,8 +245,8 @@ defmodule Beamlens.Coordinator do
   def handle_call(:status, _from, state) do
     status = %{
       running: state.running,
-      alert_count: map_size(state.alerts),
-      unread_count: count_by_status(state.alerts, :unread),
+      notification_count: map_size(state.notifications),
+      unread_count: count_by_status(state.notifications, :unread),
       iteration: state.iteration
     }
 
@@ -235,27 +254,29 @@ defmodule Beamlens.Coordinator do
   end
 
   @doc false
-  def handle_telemetry_event(_event, _measurements, %{alert: alert}, %{coordinator: pid}) do
-    GenServer.cast(pid, {:alert_received, alert})
+  def handle_telemetry_event(_event, _measurements, %{notification: notification}, %{
+        coordinator: pid
+      }) do
+    GenServer.cast(pid, {:notification_received, notification})
   end
 
-  defp handle_action(%GetAlerts{status: status}, state, trace_id) do
-    alerts = filter_alerts(state.alerts, status)
+  defp handle_action(%GetNotifications{status: status}, state, trace_id) do
+    notifications = filter_notifications(state.notifications, status)
 
     result =
-      Enum.map(alerts, fn {id, %{alert: alert, status: s}} ->
+      Enum.map(notifications, fn {id, %{notification: notification, status: s}} ->
         %{
           id: id,
           status: s,
-          operator: alert.operator,
-          anomaly_type: alert.anomaly_type,
-          severity: alert.severity,
-          summary: alert.summary,
-          detected_at: alert.detected_at
+          operator: notification.operator,
+          anomaly_type: notification.anomaly_type,
+          severity: notification.severity,
+          summary: notification.summary,
+          detected_at: notification.detected_at
         }
       end)
 
-    emit_telemetry(:get_alerts, state, %{trace_id: trace_id, count: length(result)})
+    emit_telemetry(:get_notifications, state, %{trace_id: trace_id, count: length(result)})
 
     new_context = Utils.add_result(state.context, result)
 
@@ -270,18 +291,18 @@ defmodule Beamlens.Coordinator do
   end
 
   defp handle_action(
-         %UpdateAlertStatuses{alert_ids: ids, status: status, reason: reason},
+         %UpdateNotificationStatuses{notification_ids: ids, status: status, reason: reason},
          state,
          trace_id
        ) do
-    new_alerts = update_alerts_status(state.alerts, ids, status)
+    new_notifications = update_notifications_status(state.notifications, ids, status)
 
     result = %{updated: ids, status: status}
     result = if reason, do: Map.put(result, :reason, reason), else: result
 
-    emit_telemetry(:update_alert_statuses, state, %{
+    emit_telemetry(:update_notification_statuses, state, %{
       trace_id: trace_id,
-      alert_ids: ids,
+      notification_ids: ids,
       status: status
     })
 
@@ -289,7 +310,7 @@ defmodule Beamlens.Coordinator do
 
     new_state = %{
       state
-      | alerts: new_alerts,
+      | notifications: new_notifications,
         context: new_context,
         iteration: state.iteration + 1,
         pending_trace_id: nil
@@ -301,7 +322,7 @@ defmodule Beamlens.Coordinator do
   defp handle_action(%ProduceInsight{} = tool, state, trace_id) do
     insight =
       Insight.new(%{
-        alert_ids: tool.alert_ids,
+        notification_ids: tool.notification_ids,
         correlation_type: tool.correlation_type,
         summary: tool.summary,
         root_cause_hypothesis: tool.root_cause_hypothesis,
@@ -313,12 +334,14 @@ defmodule Beamlens.Coordinator do
       insight: insight
     })
 
-    new_alerts = update_alerts_status(state.alerts, tool.alert_ids, :resolved)
+    new_notifications =
+      update_notifications_status(state.notifications, tool.notification_ids, :resolved)
+
     new_context = Utils.add_result(state.context, %{insight_produced: insight.id})
 
     new_state = %{
       state
-      | alerts: new_alerts,
+      | notifications: new_notifications,
         context: new_context,
         iteration: state.iteration + 1,
         pending_trace_id: nil
@@ -328,7 +351,7 @@ defmodule Beamlens.Coordinator do
   end
 
   defp handle_action(%Done{}, state, trace_id) do
-    has_unread = Enum.any?(state.alerts, fn {_, %{status: s}} -> s == :unread end)
+    has_unread = Enum.any?(state.notifications, fn {_, %{status: s}} -> s == :unread end)
 
     emit_telemetry(:done, state, %{trace_id: trace_id, has_unread: has_unread})
 
@@ -358,16 +381,16 @@ defmodule Beamlens.Coordinator do
     {:noreply, new_state, {:continue, :loop}}
   end
 
-  defp filter_alerts(alerts, nil), do: alerts
+  defp filter_notifications(notifications, nil), do: notifications
 
-  defp filter_alerts(alerts, status) do
-    alerts
+  defp filter_notifications(notifications, status) do
+    notifications
     |> Enum.filter(fn {_, %{status: s}} -> s == status end)
     |> Map.new()
   end
 
-  defp update_alerts_status(alerts, ids, new_status) do
-    Enum.reduce(ids, alerts, fn id, acc ->
+  defp update_notifications_status(notifications, ids, new_status) do
+    Enum.reduce(ids, notifications, fn id, acc ->
       case Map.get(acc, id) do
         nil -> acc
         entry -> Map.put(acc, id, %{entry | status: new_status})
@@ -375,8 +398,15 @@ defmodule Beamlens.Coordinator do
     end)
   end
 
-  defp count_by_status(alerts, status) do
-    Enum.count(alerts, fn {_, %{status: s}} -> s == status end)
+  defp count_by_status(notifications, status) do
+    Enum.count(notifications, fn {_, %{status: s}} -> s == status end)
+  end
+
+  defp ensure_parsed(%{__struct__: _} = struct), do: struct
+
+  defp ensure_parsed(map) when is_map(map) do
+    {:ok, parsed} = Zoi.parse(Tools.schema(), map)
+    parsed
   end
 
   defp build_puck_client(client_registry, opts) do
@@ -422,12 +452,12 @@ defmodule Beamlens.Coordinator do
 
   defp coordinator_compaction_prompt do
     """
-    Summarize this alert analysis session, preserving:
-    - Alert IDs and their statuses (exact IDs required)
-    - Correlations identified between alerts
+    Summarize this notification analysis session, preserving:
+    - Notification IDs and their statuses (exact IDs required)
+    - Correlations identified between notifications
     - Insights produced and their reasoning
     - Pending analysis or patterns being investigated
-    - Any alerts still needing attention
+    - Any notifications still needing attention
 
     Be concise. This summary will be used to continue correlation analysis.
     """
@@ -440,7 +470,7 @@ defmodule Beamlens.Coordinator do
       Map.merge(
         %{
           running: state.running,
-          alert_count: map_size(state.alerts)
+          notification_count: map_size(state.notifications)
         },
         extra
       )

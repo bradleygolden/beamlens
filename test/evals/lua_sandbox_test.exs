@@ -2,7 +2,7 @@ defmodule Beamlens.Evals.LuaSandboxTest do
   use ExUnit.Case, async: false
 
   alias Beamlens.Operator
-  alias Beamlens.Operator.Tools.{Execute, FireAlert, TakeSnapshot}
+  alias Beamlens.Operator.Tools.{Execute, SendNotification, TakeSnapshot}
   alias Puck.Eval.Graders
 
   @moduletag :eval
@@ -117,7 +117,7 @@ defmodule Beamlens.Evals.LuaSandboxTest do
         Puck.Eval.grade(nil, trajectory, [
           Graders.output_produced(TakeSnapshot),
           Graders.output_produced(Execute),
-          Graders.output_not_produced(FireAlert)
+          Graders.output_not_produced(SendNotification)
         ])
 
       assert result.passed?,

@@ -10,7 +10,7 @@ defmodule Beamlens.Skill.Logger do
 
   ## Usage
 
-      {Beamlens, watchers: [:beam, :logger]}
+      {Beamlens, operators: [:beam, :logger]}
 
   ## Sensitive Data
 

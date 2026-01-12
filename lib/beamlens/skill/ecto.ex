@@ -142,31 +142,31 @@ defmodule Beamlens.Skill.Ecto do
     Connection pool health: avg_queue_time_ms, max_queue_time_ms, p95_queue_time_ms, high_contention_count
 
     ### ecto_db_slow_queries(limit)
-    Slow queries from pg_stat_statements with parameterized SQL (no PII): query, avg_time_ms, call_count, total_time_ms
+    Slow queries from pg_stat_statements with parameterized SQL (no PII). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_index_usage()
-    Index scan statistics (PostgreSQL): table, index, index_scans, size
+    Index scan statistics (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_unused_indexes()
-    Indexes with zero scans (PostgreSQL): table, index, size
+    Indexes with zero scans (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_table_sizes(limit)
-    Table sizes (PostgreSQL): table, row_count, size, index_size, total_size
+    Table sizes (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_cache_hit()
-    Buffer cache hit ratios (PostgreSQL): table_hit_ratio, index_hit_ratio
+    Buffer cache hit ratios (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_locks()
-    Active database locks (PostgreSQL): relation, mode, granted, pid
+    Active database locks (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming), query text excluded for PII safety.
 
     ### ecto_long_running()
-    Long-running queries (PostgreSQL): pid, duration, state (query text excluded for PII safety)
+    Long-running queries (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming), query text excluded for PII safety.
 
     ### ecto_bloat(limit)
-    Table/index bloat (PostgreSQL): table, bloat_ratio, waste, dead_tuples
+    Table/index bloat (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
 
     ### ecto_connections()
-    Database connections (PostgreSQL): active, idle, waiting, total
+    Database connections (PostgreSQL). Returns raw columns from ecto_psql_extras (no renaming).
     """
   end
 

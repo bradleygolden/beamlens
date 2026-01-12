@@ -5,10 +5,10 @@ defmodule Beamlens.Operator.ToolsTest do
 
   alias Beamlens.Operator.Tools.{
     Execute,
-    FireAlert,
-    GetAlerts,
+    GetNotifications,
     GetSnapshot,
     GetSnapshots,
+    SendNotification,
     SetState,
     TakeSnapshot,
     Think,
@@ -26,11 +26,11 @@ defmodule Beamlens.Operator.ToolsTest do
       assert result.reason == "All good"
     end
 
-    test "parses fire_alert" do
+    test "parses send_notification" do
       schema = Tools.schema()
 
       input = %{
-        intent: "fire_alert",
+        intent: "send_notification",
         type: "memory_elevated",
         summary: "High memory",
         severity: "warning",
@@ -38,18 +38,18 @@ defmodule Beamlens.Operator.ToolsTest do
       }
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %FireAlert{} = result
+      assert %SendNotification{} = result
       assert result.type == "memory_elevated"
       assert result.severity == :warning
       assert result.snapshot_ids == ["abc123"]
     end
 
-    test "parses get_alerts" do
+    test "parses get_notifications" do
       schema = Tools.schema()
-      input = %{intent: "get_alerts"}
+      input = %{intent: "get_notifications"}
 
       assert {:ok, result} = Zoi.parse(schema, input)
-      assert %GetAlerts{} = result
+      assert %GetNotifications{} = result
     end
 
     test "parses take_snapshot" do
@@ -131,7 +131,7 @@ defmodule Beamlens.Operator.ToolsTest do
 
       for severity <- ["info", "warning", "critical"] do
         input = %{
-          intent: "fire_alert",
+          intent: "send_notification",
           type: "test",
           summary: "test",
           severity: severity,

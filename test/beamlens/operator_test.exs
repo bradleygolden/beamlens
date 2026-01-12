@@ -114,11 +114,11 @@ defmodule Beamlens.OperatorTest do
       Operator.stop(pid)
     end
 
-    test "initializes with empty alerts list" do
+    test "initializes with empty notifications list" do
       {:ok, pid} = start_operator_without_loop()
 
       state = :sys.get_state(pid)
-      assert state.alerts == []
+      assert state.notifications == []
 
       Operator.stop(pid)
     end
@@ -320,12 +320,12 @@ defmodule Beamlens.OperatorTest do
     end
   end
 
-  describe "alert structure" do
-    test "alerts include required fields when created" do
-      alias Beamlens.Operator.Alert
+  describe "notification structure" do
+    test "notifications include required fields when created" do
+      alias Beamlens.Operator.Notification
 
-      alert =
-        Alert.new(%{
+      notification =
+        Notification.new(%{
           operator: :test,
           anomaly_type: "test_anomaly",
           severity: :warning,
@@ -333,13 +333,13 @@ defmodule Beamlens.OperatorTest do
           snapshots: []
         })
 
-      assert alert.operator == :test
-      assert alert.anomaly_type == "test_anomaly"
-      assert alert.severity == :warning
-      assert alert.summary == "Test summary"
-      assert is_binary(alert.id)
-      assert %DateTime{} = alert.detected_at
-      assert is_binary(alert.trace_id)
+      assert notification.operator == :test
+      assert notification.anomaly_type == "test_anomaly"
+      assert notification.severity == :warning
+      assert notification.summary == "Test summary"
+      assert is_binary(notification.id)
+      assert %DateTime{} = notification.detected_at
+      assert is_binary(notification.trace_id)
     end
   end
 

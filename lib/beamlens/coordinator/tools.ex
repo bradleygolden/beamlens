@@ -3,14 +3,14 @@ defmodule Beamlens.Coordinator.Tools do
   Tool structs and union schema for the coordinator agent loop.
 
   Tools:
-  - GetAlerts: Query alerts, optionally filtered by status
-  - UpdateAlertStatuses: Set status on multiple alerts
-  - ProduceInsight: Emit insight + auto-resolve referenced alerts
-  - Done: End loop, wait for next alert
+  - GetNotifications: Query notifications, optionally filtered by status
+  - UpdateNotificationStatuses: Set status on multiple notifications
+  - ProduceInsight: Emit insight + auto-resolve referenced notifications
+  - Done: End loop, wait for next notification
   - Think: Reason through complex decisions before acting
   """
 
-  defmodule GetAlerts do
+  defmodule GetNotifications do
     @moduledoc false
     defstruct [:intent, :status]
 
@@ -20,13 +20,13 @@ defmodule Beamlens.Coordinator.Tools do
           }
   end
 
-  defmodule UpdateAlertStatuses do
+  defmodule UpdateNotificationStatuses do
     @moduledoc false
-    defstruct [:intent, :alert_ids, :status, :reason]
+    defstruct [:intent, :notification_ids, :status, :reason]
 
     @type t :: %__MODULE__{
             intent: String.t(),
-            alert_ids: [String.t()],
+            notification_ids: [String.t()],
             status: :acknowledged | :resolved,
             reason: String.t() | nil
           }
@@ -36,7 +36,7 @@ defmodule Beamlens.Coordinator.Tools do
     @moduledoc false
     defstruct [
       :intent,
-      :alert_ids,
+      :notification_ids,
       :correlation_type,
       :summary,
       :root_cause_hypothesis,
@@ -45,7 +45,7 @@ defmodule Beamlens.Coordinator.Tools do
 
     @type t :: %__MODULE__{
             intent: String.t(),
-            alert_ids: [String.t()],
+            notification_ids: [String.t()],
             correlation_type: :temporal | :causal | :symptomatic,
             summary: String.t(),
             root_cause_hypothesis: String.t() | nil,
@@ -77,47 +77,47 @@ defmodule Beamlens.Coordinator.Tools do
   """
   def schema do
     Zoi.union([
-      get_alerts_schema(),
-      update_alert_statuses_schema(),
+      get_notifications_schema(),
+      update_notification_statuses_schema(),
       produce_insight_schema(),
       done_schema(),
       think_schema()
     ])
   end
 
-  defp get_alerts_schema do
+  defp get_notifications_schema do
     Zoi.object(%{
-      intent: Zoi.literal("get_alerts"),
+      intent: Zoi.literal("get_notifications"),
       status:
-        Zoi.optional(
+        Zoi.nullish(
           Zoi.enum(["unread", "acknowledged", "resolved", "all"])
           |> Zoi.transform(&atomize_status/1)
         )
     })
-    |> Zoi.transform(fn data -> {:ok, struct!(GetAlerts, data)} end)
+    |> Zoi.transform(fn data -> {:ok, struct!(GetNotifications, data)} end)
   end
 
-  defp update_alert_statuses_schema do
+  defp update_notification_statuses_schema do
     Zoi.object(%{
-      intent: Zoi.literal("update_alert_statuses"),
-      alert_ids: Zoi.list(Zoi.string()),
+      intent: Zoi.literal("update_notification_statuses"),
+      notification_ids: Zoi.list(Zoi.string()),
       status:
         Zoi.enum(["acknowledged", "resolved"])
         |> Zoi.transform(&atomize_status/1),
-      reason: Zoi.optional(Zoi.string())
+      reason: Zoi.nullish(Zoi.string())
     })
-    |> Zoi.transform(fn data -> {:ok, struct!(UpdateAlertStatuses, data)} end)
+    |> Zoi.transform(fn data -> {:ok, struct!(UpdateNotificationStatuses, data)} end)
   end
 
   defp produce_insight_schema do
     Zoi.object(%{
       intent: Zoi.literal("produce_insight"),
-      alert_ids: Zoi.list(Zoi.string()),
+      notification_ids: Zoi.list(Zoi.string()),
       correlation_type:
         Zoi.enum(["temporal", "causal", "symptomatic"])
         |> Zoi.transform(&atomize_correlation_type/1),
       summary: Zoi.string(),
-      root_cause_hypothesis: Zoi.optional(Zoi.string()),
+      root_cause_hypothesis: Zoi.nullish(Zoi.string()),
       confidence:
         Zoi.enum(["high", "medium", "low"])
         |> Zoi.transform(&atomize_confidence/1)

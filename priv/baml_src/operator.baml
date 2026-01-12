@@ -11,8 +11,8 @@ class Message {
 
 //
 // - SetState: Update operator state
-// - FireAlert: Create an alert with referenced snapshots
-// - GetAlerts: See previous alerts
+// - SendNotification: Create a notification with referenced snapshots
+// - GetNotifications: See previous notifications
 // - TakeSnapshot: Capture current metrics with unique ID
 // - GetSnapshot: Retrieve a specific snapshot by ID
 // - GetSnapshots: Retrieve multiple snapshots with pagination
@@ -25,16 +25,16 @@ class SetState {
   reason string @description("Why you're setting this state")
 }
 
-class FireAlert {
-  intent "fire_alert"
-  type string @description("Type of alert (e.g., memory_elevated, scheduler_contention)")
+class SendNotification {
+  intent "send_notification"
+  type string @description("Type of notification (e.g., memory_elevated, scheduler_contention)")
   summary string @description("Brief description of the issue")
-  severity "info" | "warning" | "critical" @description("Alert severity")
-  snapshot_ids string[] @description("IDs of snapshots to include with alert - required")
+  severity "info" | "warning" | "critical" @description("Notification severity")
+  snapshot_ids string[] @description("IDs of snapshots to include with notification - required")
 }
 
-class GetAlerts {
-  intent "get_alerts"
+class GetNotifications {
+  intent "get_notifications"
 }
 
 class TakeSnapshot {
@@ -68,7 +68,7 @@ class Think {
 }
 
 // Main operator loop function
-function OperatorLoop(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | FireAlert | GetAlerts | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
+function OperatorLoop(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | SendNotification | GetNotifications | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
   client Default
   prompt #"
 {{ _.role("system") }}
@@ -87,23 +87,23 @@ You have a state that reflects your current assessment:
 Update your state. Use this to reflect your current assessment.
 If everything is fine, set state to healthy with a brief reason.
 
-### fire_alert(type, summary, severity, snapshot_ids)
-Create an alert when you detect an anomaly.
+### send_notification(type, summary, severity, snapshot_ids)
+Create a notification when you detect an anomaly.
 - type: Descriptive name like "memory_elevated", "scheduler_contention"
 - summary: Brief human-readable description
 - severity: info/warning/critical based on impact
 - snapshot_ids: REQUIRED - IDs of snapshots that show the issue (from take_snapshot)
 
 IMPORTANT: You must include snapshot_ids referencing the snapshots that show
-the anomaly. Alerts without snapshots will fail.
+the anomaly. Notifications without snapshots will fail.
 
-### get_alerts()
-Retrieve previous alerts for correlation. Use this to avoid duplicate
-alerts or to understand if an issue is recurring.
+### get_notifications()
+Retrieve previous notifications for correlation. Use this to avoid duplicate
+notifications or to understand if an issue is recurring.
 
 ### take_snapshot()
 Capture current system metrics and store with a unique ID. Returns:
-- id: Unique snapshot identifier (use this in fire_alert)
+- id: Unique snapshot identifier (use this in send_notification)
 - captured_at: Timestamp
 - data: Metrics including memory_utilization_pct, process_utilization_pct, etc.
 
@@ -141,7 +141,7 @@ will be recorded but no action is taken. Good for:
 1. Start by calling take_snapshot() to capture current system metrics
 2. If metrics look normal, confirm with set_state(healthy, "reason") then wait
 3. If something looks off, take more snapshots and use execute() to investigate
-4. When firing alerts, include the snapshot IDs that show the problem
+4. When sending notifications, include the snapshot IDs that show the problem
 5. Set appropriate wait times based on urgency
 
 {% for message in messages %}
@@ -222,16 +222,16 @@ Process/port counts: process_count, process_limit, port_count, port_limit
 Top N processes by "memory", "message_queue", or "reductions"
 "#
   }
-  @@assert(investigates_or_alerts, {{
+  @@assert(investigates_or_sends_notification, {{
     this.intent == "execute" or
-    this.intent == "fire_alert" or
+    this.intent == "send_notification" or
     this.intent == "take_snapshot" or
     this.intent == "think" or
     (this.intent == "set_state" and this.state != "healthy")
   }})
 }
 
-test OperatorLoop_CriticalAtomUtilization_Alerts {
+test OperatorLoop_CriticalAtomUtilization_Notifies {
   functions [OperatorLoop]
   args {
     messages [
@@ -248,8 +248,8 @@ Atom table: atom_count, atom_limit, atom_mb, atom_used_mb
 Top N processes by "memory", "message_queue", or "reductions"
 "#
   }
-  @@assert(alerts_or_escalates, {{
-    this.intent == "fire_alert" or
+  @@assert(notifies_or_escalates, {{
+    this.intent == "send_notification" or
     (this.intent == "set_state" and this.state == "critical") or
     this.intent == "execute" or
     this.intent == "think"
@@ -274,7 +274,7 @@ Top N processes by "memory", "message_queue", or "reductions"
   }
   @@assert(responds_to_contention, {{
     this.intent == "execute" or
-    this.intent == "fire_alert" or
+    this.intent == "send_notification" or
     this.intent == "take_snapshot" or
     this.intent == "think" or
     (this.intent == "set_state" and this.state != "healthy")

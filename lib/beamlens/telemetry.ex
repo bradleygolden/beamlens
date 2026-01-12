@@ -62,11 +62,11 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), from: atom(), to: atom(), reason: String.t()}`
 
-  * `[:beamlens, :operator, :alert_fired]` - Operator fired an alert
+  * `[:beamlens, :operator, :notification_sent]` - Operator sent a notification
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{operator: atom(), trace_id: String.t(), alert: Alert.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), notification: Notification.t()}`
 
-  * `[:beamlens, :operator, :get_alerts]` - Operator retrieved alerts
+  * `[:beamlens, :operator, :get_notifications]` - Operator retrieved notifications
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), count: integer}`
 
@@ -84,29 +84,34 @@ defmodule Beamlens.Telemetry do
 
   * `[:beamlens, :operator, :execute_start]` - Operator Lua execution starting
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{operator: atom(), trace_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), code: String.t()}`
 
   * `[:beamlens, :operator, :execute_complete]` - Operator Lua execution completed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{operator: atom(), trace_id: String.t()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), code: String.t(), result: term()}`
 
   * `[:beamlens, :operator, :execute_error]` - Operator Lua execution failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), code: String.t(), reason: term()}`
 
   * `[:beamlens, :operator, :wait]` - Operator sleeping
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), ms: integer}`
 
+  * `[:beamlens, :operator, :think]` - Operator recorded a thought
+    - Measurements: `%{system_time: integer}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), thought: String.t()}`
+
   * `[:beamlens, :operator, :llm_error]` - Operator LLM call failed
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term()}`
+    - Metadata: `%{operator: atom(), trace_id: String.t(), reason: term(),
+                   retry_count: integer, will_retry: boolean}`
 
   * `[:beamlens, :operator, :loop_stopped]` - Operator loop stopped normally
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), final_state: atom()}`
 
-  * `[:beamlens, :operator, :alert_failed]` - Alert creation failed
+  * `[:beamlens, :operator, :notification_failed]` - Notification creation failed
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), reason: String.t()}`
 
@@ -118,23 +123,23 @@ defmodule Beamlens.Telemetry do
 
   * `[:beamlens, :coordinator, :started]` - Coordinator server started
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{running: boolean, alert_count: integer}`
+    - Metadata: `%{running: boolean, notification_count: integer}`
 
-  * `[:beamlens, :coordinator, :alert_received]` - Alert queued for correlation
+  * `[:beamlens, :coordinator, :notification_received]` - Notification queued for correlation
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{alert_id: String.t(), watcher: atom()}`
+    - Metadata: `%{notification_id: String.t(), operator: atom()}`
 
   * `[:beamlens, :coordinator, :iteration_start]` - Coordinator analysis iteration starting
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{trace_id: String.t(), iteration: integer}`
 
-  * `[:beamlens, :coordinator, :get_alerts]` - Coordinator retrieved alerts
+  * `[:beamlens, :coordinator, :get_notifications]` - Coordinator retrieved notifications
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{trace_id: String.t(), status: atom(), count: integer}`
 
-  * `[:beamlens, :coordinator, :update_alert_statuses]` - Coordinator updated alert statuses
+  * `[:beamlens, :coordinator, :update_notification_statuses]` - Coordinator updated notification statuses
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{trace_id: String.t(), alert_ids: list(String.t()), status: atom()}`
+    - Metadata: `%{trace_id: String.t(), notification_ids: list(String.t()), status: atom()}`
 
   * `[:beamlens, :coordinator, :insight_produced]` - Coordinator created an insight
     - Measurements: `%{system_time: integer}`
@@ -154,15 +159,15 @@ defmodule Beamlens.Telemetry do
 
   * `[:beamlens, :coordinator, :unexpected_message]` - GenServer received unexpected message
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{running: boolean, alert_count: integer, message: String.t()}`
+    - Metadata: `%{running: boolean, notification_count: integer, message: String.t()}`
 
-  * `[:beamlens, :coordinator, :remote_alert_received]` - Alert received from another node via PubSub
+  * `[:beamlens, :coordinator, :remote_notification_received]` - Notification received from another node via PubSub
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{alert_id: String.t(), operator: atom(), source_node: node()}`
+    - Metadata: `%{notification_id: String.t(), operator: atom(), source_node: node()}`
 
   * `[:beamlens, :coordinator, :takeover]` - Coordinator shutdown for Highlander takeover
     - Measurements: `%{system_time: integer}`
-    - Metadata: `%{alert_count: integer}`
+    - Metadata: `%{notification_count: integer}`
 
   ## Compaction Events
 
@@ -177,10 +182,10 @@ defmodule Beamlens.Telemetry do
   ## Example Handler
 
       :telemetry.attach(
-        "beamlens-alerts",
-        [:beamlens, :operator, :alert_fired],
+        "beamlens-notifications",
+        [:beamlens, :operator, :notification_sent],
         fn _event, _measurements, metadata, _config ->
-          Logger.warning("BeamLens alert: \#{metadata.alert.summary}")
+          Logger.warning("BeamLens notification: \#{metadata.notification.summary}")
         end,
         nil
       )
@@ -209,9 +214,9 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :operator, :started],
       [:beamlens, :operator, :iteration_start],
       [:beamlens, :operator, :state_change],
-      [:beamlens, :operator, :alert_fired],
-      [:beamlens, :operator, :alert_failed],
-      [:beamlens, :operator, :get_alerts],
+      [:beamlens, :operator, :notification_sent],
+      [:beamlens, :operator, :notification_failed],
+      [:beamlens, :operator, :get_notifications],
       [:beamlens, :operator, :take_snapshot],
       [:beamlens, :operator, :get_snapshot],
       [:beamlens, :operator, :get_snapshots],
@@ -219,20 +224,21 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :operator, :execute_complete],
       [:beamlens, :operator, :execute_error],
       [:beamlens, :operator, :wait],
+      [:beamlens, :operator, :think],
       [:beamlens, :operator, :llm_error],
       [:beamlens, :operator, :loop_stopped],
       [:beamlens, :operator, :unexpected_message],
       [:beamlens, :coordinator, :started],
-      [:beamlens, :coordinator, :alert_received],
+      [:beamlens, :coordinator, :notification_received],
       [:beamlens, :coordinator, :iteration_start],
-      [:beamlens, :coordinator, :get_alerts],
-      [:beamlens, :coordinator, :update_alert_statuses],
+      [:beamlens, :coordinator, :get_notifications],
+      [:beamlens, :coordinator, :update_notification_statuses],
       [:beamlens, :coordinator, :insight_produced],
       [:beamlens, :coordinator, :done],
       [:beamlens, :coordinator, :loop_stopped],
       [:beamlens, :coordinator, :llm_error],
       [:beamlens, :coordinator, :unexpected_message],
-      [:beamlens, :coordinator, :remote_alert_received],
+      [:beamlens, :coordinator, :remote_notification_received],
       [:beamlens, :coordinator, :takeover],
       [:beamlens, :compaction, :start],
       [:beamlens, :compaction, :stop]

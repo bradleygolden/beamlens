@@ -3,7 +3,7 @@ defmodule Beamlens do
   BeamLens - AI-powered BEAM VM health monitoring.
 
   Specialized **operators** autonomously monitor BEAM VM metrics using LLM-driven
-  loops, detect anomalies, and fire alerts via telemetry when issues are found.
+  loops, detect anomalies, and send notifications via telemetry when issues are found.
 
   ## Architecture
 
@@ -12,7 +12,7 @@ defmodule Beamlens do
   │                      Operator (Autonomous)                  │
   │  1. LLM controls timing via wait tool                       │
   │  2. Collects snapshots, analyzes patterns                   │
-  │  3. Fires alerts via telemetry when anomalies detected      │
+  │  3. Sends notifications via telemetry when anomalies detected│
   │  4. Maintains state: healthy → observing → warning → critical│
   └─────────────────────────────────────────────────────────────┘
                               │
@@ -20,7 +20,7 @@ defmodule Beamlens do
               ┌────────────────────────────┐
               │     Telemetry Events       │
               │  [:beamlens, :operator, *] │
-              │  - alert_fired             │
+              │  - notification_sent       │
               │  - state_change            │
               │  - iteration_start         │
               └────────────────────────────┘
@@ -99,11 +99,11 @@ defmodule Beamlens do
   BeamLens emits telemetry events for observability. See `Beamlens.Telemetry`
   for the full list of events.
 
-  Subscribe to alert events:
+  Subscribe to notification events:
 
-      :telemetry.attach("beamlens-alerts", [:beamlens, :operator, :alert_fired], fn
+      :telemetry.attach("beamlens-notifications", [:beamlens, :operator, :notification_sent], fn
         _event, _measurements, metadata, _config ->
-          IO.inspect(metadata, label: "Alert fired")
+          IO.inspect(metadata, label: "Notification sent")
       end, nil)
   """
 

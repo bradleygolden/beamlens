@@ -5,8 +5,7 @@ defmodule Beamlens.CoordinatorTest do
 
   alias Beamlens.Coordinator
   alias Beamlens.Coordinator.Insight
-  alias Beamlens.Coordinator.Tools.{Done, GetAlerts, ProduceInsight, UpdateAlertStatuses}
-  alias Beamlens.Operator.Alert
+  alias Beamlens.Operator.Notification
 
   defp mock_client do
     Puck.Client.new({Puck.Backends.Mock, error: :test_stop})
@@ -30,14 +29,14 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-  defp build_test_alert(overrides \\ %{}) do
-    Alert.new(
+  defp build_test_notification(overrides \\ %{}) do
+    Notification.new(
       Map.merge(
         %{
           operator: :test,
           anomaly_type: "test_anomaly",
           severity: :info,
-          summary: "Test alert",
+          summary: "Test notification",
           snapshots: []
         },
         overrides
@@ -45,8 +44,8 @@ defmodule Beamlens.CoordinatorTest do
     )
   end
 
-  defp simulate_alert(pid, alert) do
-    GenServer.cast(pid, {:alert_received, alert})
+  defp simulate_notification(pid, notification) do
+    GenServer.cast(pid, {:notification_received, notification})
   end
 
   defp extract_content_text(content) when is_binary(content), do: content
@@ -97,31 +96,31 @@ defmodule Beamlens.CoordinatorTest do
       status = Coordinator.status(pid)
 
       assert status.running == false
-      assert status.alert_count == 0
+      assert status.notification_count == 0
       assert status.unread_count == 0
       assert status.iteration == 0
 
       stop_coordinator(pid)
     end
 
-    test "reflects alert counts accurately" do
+    test "reflects notification counts accurately" do
       {:ok, pid} = start_coordinator()
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{
-          alert1.id => %{alert: alert1, status: :unread},
-          alert2.id => %{alert: alert2, status: :acknowledged}
+        notifications = %{
+          notification1.id => %{notification: notification1, status: :unread},
+          notification2.id => %{notification: notification2, status: :acknowledged}
         }
 
-        %{state | alerts: alerts}
+        %{state | notifications: notifications}
       end)
 
       status = Coordinator.status(pid)
 
-      assert status.alert_count == 2
+      assert status.notification_count == 2
       assert status.unread_count == 1
 
       stop_coordinator(pid)
@@ -129,11 +128,11 @@ defmodule Beamlens.CoordinatorTest do
   end
 
   describe "initial state" do
-    test "starts with empty alerts" do
+    test "starts with empty notifications" do
       {:ok, pid} = start_coordinator()
 
       state = :sys.get_state(pid)
-      assert state.alerts == %{}
+      assert state.notifications == %{}
 
       stop_coordinator(pid)
     end
@@ -167,50 +166,50 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-  describe "alert ingestion" do
-    test "alert received creates entry with unread status" do
+  describe "notification ingestion" do
+    test "notification received creates entry with unread status" do
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
 
       :sys.replace_state(pid, fn state ->
         %{state | running: true}
       end)
 
-      simulate_alert(pid, alert)
+      simulate_notification(pid, notification)
 
       state = :sys.get_state(pid)
 
-      assert Map.has_key?(state.alerts, alert.id)
-      assert state.alerts[alert.id].status == :unread
-      assert state.alerts[alert.id].alert == alert
+      assert Map.has_key?(state.notifications, notification.id)
+      assert state.notifications[notification.id].status == :unread
+      assert state.notifications[notification.id].notification == notification
 
       stop_coordinator(pid)
     end
 
-    test "multiple alerts can coexist" do
+    test "multiple notifications can coexist" do
       {:ok, pid} = start_coordinator()
 
       :sys.replace_state(pid, fn state ->
         %{state | running: true}
       end)
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
 
-      simulate_alert(pid, alert1)
-      simulate_alert(pid, alert2)
+      simulate_notification(pid, notification1)
+      simulate_notification(pid, notification2)
 
       state = :sys.get_state(pid)
 
-      assert map_size(state.alerts) == 2
-      assert Map.has_key?(state.alerts, alert1.id)
-      assert Map.has_key?(state.alerts, alert2.id)
+      assert map_size(state.notifications) == 2
+      assert Map.has_key?(state.notifications, notification1.id)
+      assert Map.has_key?(state.notifications, notification2.id)
 
       stop_coordinator(pid)
     end
 
-    test "first alert triggers loop start via telemetry" do
+    test "first notification triggers loop start via telemetry" do
       ref = make_ref()
       parent = self()
 
@@ -225,8 +224,8 @@ defmodule Beamlens.CoordinatorTest do
 
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
-      simulate_alert(pid, alert)
+      notification = build_test_notification()
+      simulate_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 1000
 
@@ -235,26 +234,27 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-  describe "handle_action - GetAlerts" do
+  describe "handle_action - GetNotifications" do
     test "increments iteration after processing" do
       {:ok, pid} = start_coordinator()
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{
-          alert1.id => %{alert: alert1, status: :unread},
-          alert2.id => %{alert: alert2, status: :acknowledged}
+        notifications = %{
+          notification1.id => %{notification: notification1, status: :unread},
+          notification2.id => %{notification: notification2, status: :acknowledged}
         }
 
-        %{state | alerts: alerts, running: true, pending_task: task}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      send(pid, {task.ref, {:ok, %{content: %GetAlerts{status: nil}}, Puck.Context.new()}})
+      action_map = %{intent: "get_notifications"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
@@ -266,151 +266,158 @@ defmodule Beamlens.CoordinatorTest do
     test "filters by unread status and adds result to context" do
       {:ok, pid} = start_coordinator()
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{
-          alert1.id => %{alert: alert1, status: :unread},
-          alert2.id => %{alert: alert2, status: :acknowledged}
+        notifications = %{
+          notification1.id => %{notification: notification1, status: :unread},
+          notification2.id => %{notification: notification2, status: :acknowledged}
         }
 
-        %{state | alerts: alerts, running: true, pending_task: task}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      send(pid, {task.ref, {:ok, %{content: %GetAlerts{status: :unread}}, Puck.Context.new()}})
+      action_map = %{intent: "get_notifications", status: "unread"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
       last_message = List.last(state.context.messages)
       content_text = extract_content_text(last_message.content)
-      assert content_text =~ alert1.id
-      refute content_text =~ alert2.id
+      assert content_text =~ notification1.id
+      refute content_text =~ notification2.id
 
       stop_coordinator(pid)
     end
   end
 
-  describe "handle_action - UpdateAlertStatuses" do
-    test "updates single alert status" do
+  describe "handle_action - UpdateNotificationStatuses" do
+    test "updates single notification status" do
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :unread}}
-        %{state | alerts: alerts, running: true, pending_task: task}
+        notifications = %{notification.id => %{notification: notification, status: :unread}}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      action = %UpdateAlertStatuses{alert_ids: [alert.id], status: :acknowledged, reason: nil}
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      action_map = %{
+        intent: "update_notification_statuses",
+        notification_ids: [notification.id],
+        status: "acknowledged"
+      }
+
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
-      assert state.alerts[alert.id].status == :acknowledged
+      assert state.notifications[notification.id].status == :acknowledged
 
       stop_coordinator(pid)
     end
 
-    test "updates multiple alerts" do
+    test "updates multiple notifications" do
       {:ok, pid} = start_coordinator()
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{
-          alert1.id => %{alert: alert1, status: :unread},
-          alert2.id => %{alert: alert2, status: :unread}
+        notifications = %{
+          notification1.id => %{notification: notification1, status: :unread},
+          notification2.id => %{notification: notification2, status: :unread}
         }
 
-        %{state | alerts: alerts, running: true, pending_task: task}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      action = %UpdateAlertStatuses{
-        alert_ids: [alert1.id, alert2.id],
-        status: :resolved,
+      action_map = %{
+        intent: "update_notification_statuses",
+        notification_ids: [notification1.id, notification2.id],
+        status: "resolved",
         reason: "Test reason"
       }
 
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
-      assert state.alerts[alert1.id].status == :resolved
-      assert state.alerts[alert2.id].status == :resolved
+      assert state.notifications[notification1.id].status == :resolved
+      assert state.notifications[notification2.id].status == :resolved
 
       stop_coordinator(pid)
     end
 
-    test "ignores non-existent alert IDs" do
+    test "ignores non-existent notification IDs" do
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :unread}}
-        %{state | alerts: alerts, running: true, pending_task: task}
+        notifications = %{notification.id => %{notification: notification, status: :unread}}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      action = %UpdateAlertStatuses{
-        alert_ids: [alert.id, "nonexistent_id"],
-        status: :acknowledged,
-        reason: nil
+      action_map = %{
+        intent: "update_notification_statuses",
+        notification_ids: [notification.id, "nonexistent_id"],
+        status: "acknowledged"
       }
 
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
-      assert state.alerts[alert.id].status == :acknowledged
-      refute Map.has_key?(state.alerts, "nonexistent_id")
+      assert state.notifications[notification.id].status == :acknowledged
+      refute Map.has_key?(state.notifications, "nonexistent_id")
 
       stop_coordinator(pid)
     end
   end
 
   describe "handle_action - ProduceInsight" do
-    test "auto-resolves referenced alerts" do
+    test "auto-resolves referenced notifications" do
       {:ok, pid} = start_coordinator()
 
-      alert1 = build_test_alert(%{anomaly_type: "type1"})
-      alert2 = build_test_alert(%{anomaly_type: "type2"})
+      notification1 = build_test_notification(%{anomaly_type: "type1"})
+      notification2 = build_test_notification(%{anomaly_type: "type2"})
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{
-          alert1.id => %{alert: alert1, status: :acknowledged},
-          alert2.id => %{alert: alert2, status: :acknowledged}
+        notifications = %{
+          notification1.id => %{notification: notification1, status: :acknowledged},
+          notification2.id => %{notification: notification2, status: :acknowledged}
         }
 
-        %{state | alerts: alerts, running: true, pending_task: task}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      action = %ProduceInsight{
-        alert_ids: [alert1.id, alert2.id],
-        correlation_type: :causal,
+      action_map = %{
+        intent: "produce_insight",
+        notification_ids: [notification1.id, notification2.id],
+        correlation_type: "causal",
         summary: "Test correlation",
-        root_cause_hypothesis: nil,
-        confidence: :high
+        confidence: "high"
       }
 
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
-      assert state.alerts[alert1.id].status == :resolved
-      assert state.alerts[alert2.id].status == :resolved
+      assert state.notifications[notification1.id].status == :resolved
+      assert state.notifications[notification2.id].status == :resolved
 
       stop_coordinator(pid)
     end
@@ -418,24 +425,25 @@ defmodule Beamlens.CoordinatorTest do
     test "adds insight_produced to context" do
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :acknowledged}}
-        %{state | alerts: alerts, running: true, pending_task: task}
+        notifications = %{notification.id => %{notification: notification, status: :acknowledged}}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      action = %ProduceInsight{
-        alert_ids: [alert.id],
-        correlation_type: :temporal,
+      action_map = %{
+        intent: "produce_insight",
+        notification_ids: [notification.id],
+        correlation_type: "temporal",
         summary: "Test insight",
         root_cause_hypothesis: "Test hypothesis",
-        confidence: :medium
+        confidence: "medium"
       }
 
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
@@ -448,19 +456,20 @@ defmodule Beamlens.CoordinatorTest do
   end
 
   describe "handle_action - Done" do
-    test "stops loop when no unread alerts" do
+    test "stops loop when no unread notifications" do
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :resolved}}
-        %{state | alerts: alerts, running: true, pending_task: task}
+        notifications = %{notification.id => %{notification: notification, status: :resolved}}
+        %{state | notifications: notifications, running: true, pending_task: task}
       end)
 
-      send(pid, {task.ref, {:ok, %{content: %Done{}}, Puck.Context.new()}})
+      action_map = %{intent: "done"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       state = :sys.get_state(pid)
 
@@ -469,7 +478,7 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
 
-    test "resets iteration when unread alerts exist" do
+    test "resets iteration when unread notifications exist" do
       ref = make_ref()
       parent = self()
 
@@ -484,16 +493,17 @@ defmodule Beamlens.CoordinatorTest do
 
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :unread}}
-        %{state | alerts: alerts, running: true, pending_task: task, iteration: 5}
+        notifications = %{notification.id => %{notification: notification, status: :unread}}
+        %{state | notifications: notifications, running: true, pending_task: task, iteration: 5}
       end)
 
-      send(pid, {task.ref, {:ok, %{content: %Done{}}, Puck.Context.new()}})
+      action_map = %{intent: "done"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       assert_receive {:telemetry, :done, %{has_unread: true}}, 1000
 
@@ -587,21 +597,21 @@ defmodule Beamlens.CoordinatorTest do
       {:ok, pid} =
         Coordinator.start_link(name: :"test_coord_#{:erlang.unique_integer([:positive])}")
 
-      assert_receive {:telemetry, :started, %{running: false, alert_count: 0}}, 1000
+      assert_receive {:telemetry, :started, %{running: false, notification_count: 0}}, 1000
 
       stop_coordinator(pid)
       :telemetry.detach({ref, :started})
     end
 
-    test "emits alert_received event" do
+    test "emits notification_received event" do
       ref = make_ref()
       parent = self()
 
       :telemetry.attach(
-        {ref, :alert_received},
-        [:beamlens, :coordinator, :alert_received],
+        {ref, :notification_received},
+        [:beamlens, :coordinator, :notification_received],
         fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :alert_received, metadata})
+          send(parent, {:telemetry, :notification_received, metadata})
         end,
         nil
       )
@@ -612,13 +622,14 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true}
       end)
 
-      alert = build_test_alert()
-      simulate_alert(pid, alert)
+      notification = build_test_notification()
+      simulate_notification(pid, notification)
 
-      assert_receive {:telemetry, :alert_received, %{alert_id: _, operator: :test}}, 1000
+      assert_receive {:telemetry, :notification_received, %{notification_id: _, operator: :test}},
+                     1000
 
       stop_coordinator(pid)
-      :telemetry.detach({ref, :alert_received})
+      :telemetry.detach({ref, :notification_received})
     end
 
     test "emits iteration_start event when loop runs" do
@@ -636,8 +647,8 @@ defmodule Beamlens.CoordinatorTest do
 
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
-      simulate_alert(pid, alert)
+      notification = build_test_notification()
+      simulate_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0, trace_id: _}}, 1000
 
@@ -660,31 +671,31 @@ defmodule Beamlens.CoordinatorTest do
 
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
       task = Task.async(fn -> :ok end)
       Task.await(task)
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :acknowledged}}
+        notifications = %{notification.id => %{notification: notification, status: :acknowledged}}
 
         %{
           state
-          | alerts: alerts,
+          | notifications: notifications,
             running: true,
             pending_task: task,
             pending_trace_id: "test-trace"
         }
       end)
 
-      action = %ProduceInsight{
-        alert_ids: [alert.id],
-        correlation_type: :temporal,
+      action_map = %{
+        intent: "produce_insight",
+        notification_ids: [notification.id],
+        correlation_type: "temporal",
         summary: "Test insight",
-        root_cause_hypothesis: nil,
-        confidence: :low
+        confidence: "low"
       }
 
-      send(pid, {task.ref, {:ok, %{content: action}, Puck.Context.new()}})
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       assert_receive {:telemetry, :insight_produced, %{insight: %Insight{}}}, 1000
 
@@ -714,7 +725,8 @@ defmodule Beamlens.CoordinatorTest do
         %{state | running: true, pending_task: task, pending_trace_id: "test-trace"}
       end)
 
-      send(pid, {task.ref, {:ok, %{content: %Done{}}, Puck.Context.new()}})
+      action_map = %{intent: "done"}
+      send(pid, {task.ref, {:ok, %{content: action_map}, Puck.Context.new()}})
 
       assert_receive {:telemetry, :done, %{has_unread: false}}, 1000
 
@@ -783,14 +795,14 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
 
-    test "compaction prompt mentions alert analysis context" do
+    test "compaction prompt mentions notification analysis context" do
       {:ok, pid} = start_coordinator_for_compaction_test()
 
       state = :sys.get_state(pid)
       {:summarize, config} = state.client.auto_compaction
       prompt = Keyword.get(config, :prompt)
 
-      assert prompt =~ "Alert IDs"
+      assert prompt =~ "Notification IDs"
       assert prompt =~ "correlation"
       assert prompt =~ "Insights"
 
@@ -827,16 +839,21 @@ defmodule Beamlens.CoordinatorTest do
         %{state | client: mock_client()}
       end)
 
-      alert = build_test_alert()
-      Phoenix.PubSub.broadcast(pubsub, "beamlens:alerts", {:beamlens_alert, alert, :other@node})
+      notification = build_test_notification()
+
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "beamlens:notifications",
+        {:beamlens_notification, notification, :other@node}
+      )
 
       state = :sys.get_state(pid)
-      assert Map.has_key?(state.alerts, alert.id)
+      assert Map.has_key?(state.notifications, notification.id)
 
       stop_coordinator(pid)
     end
 
-    test "ignores alerts from local node", %{pubsub: pubsub} do
+    test "ignores notifications from local node", %{pubsub: pubsub} do
       name = :"coordinator_pubsub_local_#{:erlang.unique_integer([:positive])}"
       {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
 
@@ -844,24 +861,31 @@ defmodule Beamlens.CoordinatorTest do
         %{state | client: mock_client()}
       end)
 
-      alert = build_test_alert()
-      Phoenix.PubSub.broadcast(pubsub, "beamlens:alerts", {:beamlens_alert, alert, node()})
+      notification = build_test_notification()
+
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "beamlens:notifications",
+        {:beamlens_notification, notification, node()}
+      )
 
       state = :sys.get_state(pid)
-      refute Map.has_key?(state.alerts, alert.id)
+      refute Map.has_key?(state.notifications, notification.id)
 
       stop_coordinator(pid)
     end
 
-    test "emits remote_alert_received telemetry for cross-node alerts", %{pubsub: pubsub} do
+    test "emits remote_notification_received telemetry for cross-node notifications", %{
+      pubsub: pubsub
+    } do
       ref = make_ref()
       parent = self()
 
       :telemetry.attach(
-        {ref, :remote_alert},
-        [:beamlens, :coordinator, :remote_alert_received],
+        {ref, :remote_notification},
+        [:beamlens, :coordinator, :remote_notification_received],
         fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :remote_alert_received, metadata})
+          send(parent, {:telemetry, :remote_notification_received, metadata})
         end,
         nil
       )
@@ -873,18 +897,23 @@ defmodule Beamlens.CoordinatorTest do
         %{state | client: mock_client()}
       end)
 
-      alert = build_test_alert()
-      Phoenix.PubSub.broadcast(pubsub, "beamlens:alerts", {:beamlens_alert, alert, :other@node})
+      notification = build_test_notification()
 
-      assert_receive {:telemetry, :remote_alert_received,
-                      %{alert_id: _, operator: :test, source_node: :other@node}},
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "beamlens:notifications",
+        {:beamlens_notification, notification, :other@node}
+      )
+
+      assert_receive {:telemetry, :remote_notification_received,
+                      %{notification_id: _, operator: :test, source_node: :other@node}},
                      1000
 
       stop_coordinator(pid)
-      :telemetry.detach({ref, :remote_alert})
+      :telemetry.detach({ref, :remote_notification})
     end
 
-    test "starts loop when receiving first remote alert", %{pubsub: pubsub} do
+    test "starts loop when receiving first remote notification", %{pubsub: pubsub} do
       ref = make_ref()
       parent = self()
 
@@ -904,8 +933,13 @@ defmodule Beamlens.CoordinatorTest do
         %{state | client: mock_client()}
       end)
 
-      alert = build_test_alert()
-      Phoenix.PubSub.broadcast(pubsub, "beamlens:alerts", {:beamlens_alert, alert, :other@node})
+      notification = build_test_notification()
+
+      Phoenix.PubSub.broadcast(
+        pubsub,
+        "beamlens:notifications",
+        {:beamlens_notification, notification, :other@node}
+      )
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 1000
 
@@ -932,16 +966,16 @@ defmodule Beamlens.CoordinatorTest do
 
       {:ok, pid} = start_coordinator()
 
-      alert = build_test_alert()
+      notification = build_test_notification()
 
       :sys.replace_state(pid, fn state ->
-        alerts = %{alert.id => %{alert: alert, status: :unread}}
-        %{state | alerts: alerts}
+        notifications = %{notification.id => %{notification: notification, status: :unread}}
+        %{state | notifications: notifications}
       end)
 
       GenServer.stop(pid, :shutdown)
 
-      assert_receive {:telemetry, :takeover, %{alert_count: 1}}, 1000
+      assert_receive {:telemetry, :takeover, %{notification_count: 1}}, 1000
 
       :telemetry.detach({ref, :takeover})
     end

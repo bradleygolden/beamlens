@@ -6,7 +6,7 @@ defmodule Beamlens.Operator do
 
   1. Collect snapshot
   2. Send to LLM with current state
-  3. LLM returns action (set_state, fire_alert, get_alerts, execute, wait, think)
+  3. LLM returns action (set_state, send_notification, get_notifications, execute, wait, think)
   4. Execute action and loop
 
   The `wait` tool lets the LLM control its own cadence:
@@ -33,15 +33,16 @@ defmodule Beamlens.Operator do
   use GenServer
 
   alias Beamlens.LLM.Utils
-  alias Beamlens.Operator.{Alert, Snapshot, Tools}
+  alias Beamlens.Operator.{Notification, Snapshot, Tools}
+  alias Beamlens.Skill.Base, as: BaseSkill
   alias Beamlens.Telemetry
 
   alias Beamlens.Operator.Tools.{
     Execute,
-    FireAlert,
-    GetAlerts,
+    GetNotifications,
     GetSnapshot,
     GetSnapshots,
+    SendNotification,
     SetState,
     TakeSnapshot,
     Think,
@@ -51,6 +52,8 @@ defmodule Beamlens.Operator do
   alias Puck.Context
   alias Puck.Sandbox.Eval
 
+  @max_llm_retries 3
+
   defstruct [
     :name,
     :skill,
@@ -59,11 +62,12 @@ defmodule Beamlens.Operator do
     :context,
     :pending_task,
     :pending_trace_id,
-    alerts: [],
+    notifications: [],
     snapshots: [],
     iteration: 0,
     state: :healthy,
-    running: false
+    running: false,
+    llm_retry_count: 0
   ]
 
   @doc """
@@ -126,16 +130,16 @@ defmodule Beamlens.Operator do
 
   ## Returns
 
-    * `{:ok, alerts}` - List of alerts fired during this run
+    * `{:ok, notifications}` - List of notifications sent during this run
     * `{:error, reason}` - If the skill couldn't be resolved or LLM failed
 
   ## Example
 
       # Run a single monitoring pass
-      {:ok, alerts} = Beamlens.Operator.run_once(:beam, client_registry())
+      {:ok, notifications} = Beamlens.Operator.run_once(:beam, client_registry())
 
       # With options
-      {:ok, alerts} = Beamlens.Operator.run_once(:beam, client_registry(), max_iterations: 5)
+      {:ok, notifications} = Beamlens.Operator.run_once(:beam, client_registry(), max_iterations: 5)
 
   ## Oban Integration
 
@@ -145,7 +149,7 @@ defmodule Beamlens.Operator do
         @impl true
         def perform(%{args: %{"skill" => skill_name}}) do
           skill = String.to_existing_atom(skill_name)
-          {:ok, _alerts} = Beamlens.Operator.run_once(skill, client_registry())
+          {:ok, _notifications} = Beamlens.Operator.run_once(skill, client_registry())
           :ok
         end
       end
@@ -173,7 +177,7 @@ defmodule Beamlens.Operator do
       skill: skill,
       client: client,
       context: Context.new(metadata: %{iteration: 0}),
-      alerts: [],
+      notifications: [],
       snapshots: [],
       state: :healthy,
       iteration: 0
@@ -183,7 +187,7 @@ defmodule Beamlens.Operator do
   end
 
   defp run_loop(run_state, max_iterations) when run_state.iteration >= max_iterations do
-    {:ok, run_state.alerts}
+    {:ok, run_state.notifications}
   end
 
   defp run_loop(run_state, max_iterations) do
@@ -206,7 +210,7 @@ defmodule Beamlens.Operator do
   end
 
   defp handle_run_once_action(%Wait{}, run_state, _max_iterations, _trace_id) do
-    {:ok, run_state.alerts}
+    {:ok, run_state.notifications}
   end
 
   defp handle_run_once_action(%SetState{state: new_state}, run_state, max_iterations, _trace_id) do
@@ -215,15 +219,20 @@ defmodule Beamlens.Operator do
   end
 
   defp handle_run_once_action(
-         %FireAlert{type: type, summary: summary, severity: severity, snapshot_ids: snapshot_ids},
+         %SendNotification{
+           type: type,
+           summary: summary,
+           severity: severity,
+           snapshot_ids: snapshot_ids
+         },
          run_state,
          max_iterations,
          trace_id
        ) do
     case resolve_snapshots(snapshot_ids, run_state.snapshots) do
       {:ok, snapshots} ->
-        alert =
-          Alert.new(%{
+        notification =
+          Notification.new(%{
             operator: run_state.skill.id(),
             anomaly_type: type,
             severity: severity,
@@ -232,14 +241,14 @@ defmodule Beamlens.Operator do
           })
 
         :telemetry.execute(
-          [:beamlens, :operator, :alert_fired],
+          [:beamlens, :operator, :notification_sent],
           %{system_time: System.system_time()},
-          %{operator: run_state.skill.id(), trace_id: trace_id, alert: alert}
+          %{operator: run_state.skill.id(), trace_id: trace_id, notification: notification}
         )
 
         run_state = %{
           run_state
-          | alerts: run_state.alerts ++ [alert],
+          | notifications: run_state.notifications ++ [notification],
             iteration: run_state.iteration + 1
         }
 
@@ -294,15 +303,15 @@ defmodule Beamlens.Operator do
     run_loop(run_state, max_iterations)
   end
 
-  defp handle_run_once_action(%GetAlerts{}, run_state, max_iterations, _trace_id) do
-    new_context = Utils.add_result(run_state.context, run_state.alerts)
+  defp handle_run_once_action(%GetNotifications{}, run_state, max_iterations, _trace_id) do
+    new_context = Utils.add_result(run_state.context, run_state.notifications)
     run_state = %{run_state | context: new_context, iteration: run_state.iteration + 1}
     run_loop(run_state, max_iterations)
   end
 
   defp handle_run_once_action(%Execute{code: lua_code}, run_state, max_iterations, _trace_id) do
     result =
-      case Eval.eval(:lua, lua_code, callbacks: run_state.skill.callbacks()) do
+      case Eval.eval(:lua, lua_code, callbacks: merged_callbacks(run_state.skill)) do
         {:ok, result} -> result
         {:error, reason} -> %{error: inspect(reason)}
       end
@@ -375,21 +384,16 @@ defmodule Beamlens.Operator do
 
     case result do
       {:ok, response, new_context} ->
-        handle_action(response.content, %{state | context: new_context}, state.pending_trace_id)
+        state = %{state | context: new_context, llm_retry_count: 0}
+        handle_action(response.content, state, state.pending_trace_id)
 
       {:error, reason} ->
-        emit_telemetry(:llm_error, state, %{trace_id: state.pending_trace_id, reason: reason})
-        {:noreply, %{state | running: false, pending_trace_id: nil}}
+        handle_llm_error(state, reason)
     end
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{pending_task: %Task{ref: ref}} = state) do
-    emit_telemetry(:llm_error, state, %{
-      trace_id: state.pending_trace_id,
-      reason: {:task_crashed, reason}
-    })
-
-    {:noreply, %{state | pending_task: nil, pending_trace_id: nil, running: false}}
+    handle_llm_error(state, {:task_crashed, reason})
   end
 
   def handle_info(:continue_loop, state) do
@@ -420,6 +424,28 @@ defmodule Beamlens.Operator do
 
   def terminate(_reason, _state), do: :ok
 
+  defp handle_llm_error(state, reason) do
+    new_retry_count = state.llm_retry_count + 1
+
+    emit_telemetry(:llm_error, state, %{
+      trace_id: state.pending_trace_id,
+      reason: reason,
+      retry_count: new_retry_count,
+      will_retry: new_retry_count < @max_llm_retries
+    })
+
+    if new_retry_count < @max_llm_retries do
+      delay = :timer.seconds(round(:math.pow(2, new_retry_count - 1)))
+      Process.send_after(self(), :continue_loop, delay)
+
+      {:noreply,
+       %{state | pending_task: nil, pending_trace_id: nil, llm_retry_count: new_retry_count}}
+    else
+      {:noreply,
+       %{state | pending_task: nil, pending_trace_id: nil, running: false, llm_retry_count: 0}}
+    end
+  end
+
   defp handle_action(%SetState{state: new_state, reason: reason}, state, trace_id) do
     emit_telemetry(:state_change, state, %{
       trace_id: trace_id,
@@ -433,22 +459,27 @@ defmodule Beamlens.Operator do
   end
 
   defp handle_action(
-         %FireAlert{type: type, summary: summary, severity: severity, snapshot_ids: snapshot_ids},
+         %SendNotification{
+           type: type,
+           summary: summary,
+           severity: severity,
+           snapshot_ids: snapshot_ids
+         },
          state,
          trace_id
        ) do
     case resolve_snapshots(snapshot_ids, state.snapshots) do
       {:ok, snapshots} ->
-        alert = build_alert(state, type, summary, severity, snapshots)
+        notification = build_notification(state, type, summary, severity, snapshots)
 
-        emit_telemetry(:alert_fired, state, %{
+        emit_telemetry(:notification_sent, state, %{
           trace_id: trace_id,
-          alert: alert
+          notification: notification
         })
 
         new_state = %{
           state
-          | alerts: state.alerts ++ [alert],
+          | notifications: state.notifications ++ [notification],
             iteration: state.iteration + 1,
             pending_trace_id: nil
         }
@@ -456,7 +487,7 @@ defmodule Beamlens.Operator do
         {:noreply, new_state, {:continue, :loop}}
 
       {:error, reason} ->
-        emit_telemetry(:alert_failed, state, %{trace_id: trace_id, reason: reason})
+        emit_telemetry(:notification_failed, state, %{trace_id: trace_id, reason: reason})
 
         new_context = Utils.add_result(state.context, %{error: reason})
 
@@ -471,15 +502,15 @@ defmodule Beamlens.Operator do
     end
   end
 
-  defp handle_action(%GetAlerts{}, state, trace_id) do
-    alerts = state.alerts
+  defp handle_action(%GetNotifications{}, state, trace_id) do
+    notifications = state.notifications
 
-    emit_telemetry(:get_alerts, state, %{
+    emit_telemetry(:get_notifications, state, %{
       trace_id: trace_id,
-      count: length(alerts)
+      count: length(notifications)
     })
 
-    new_context = Utils.add_result(state.context, alerts)
+    new_context = Utils.add_result(state.context, notifications)
 
     new_state = %{
       state
@@ -557,16 +588,26 @@ defmodule Beamlens.Operator do
   end
 
   defp handle_action(%Execute{code: lua_code}, state, trace_id) do
-    emit_telemetry(:execute_start, state, %{trace_id: trace_id})
+    emit_telemetry(:execute_start, state, %{trace_id: trace_id, code: lua_code})
 
     result =
-      case Eval.eval(:lua, lua_code, callbacks: state.skill.callbacks()) do
+      case Eval.eval(:lua, lua_code, callbacks: merged_callbacks(state.skill)) do
         {:ok, result} ->
-          emit_telemetry(:execute_complete, state, %{trace_id: trace_id})
+          emit_telemetry(:execute_complete, state, %{
+            trace_id: trace_id,
+            code: lua_code,
+            result: result
+          })
+
           result
 
         {:error, reason} ->
-          emit_telemetry(:execute_error, state, %{trace_id: trace_id, reason: reason})
+          emit_telemetry(:execute_error, state, %{
+            trace_id: trace_id,
+            code: lua_code,
+            reason: reason
+          })
+
           %{error: inspect(reason)}
       end
 
@@ -622,8 +663,8 @@ defmodule Beamlens.Operator do
     "Current state: #{operator_state}"
   end
 
-  defp build_alert(state, type, summary, severity, snapshots) do
-    Alert.new(%{
+  defp build_notification(state, type, summary, severity, snapshots) do
+    Notification.new(%{
       operator: state.skill.id(),
       anomaly_type: type,
       severity: severity,
@@ -633,7 +674,7 @@ defmodule Beamlens.Operator do
   end
 
   defp resolve_snapshots([], _stored_snapshots) do
-    {:error, "snapshot_ids required: alerts must reference at least one snapshot"}
+    {:error, "snapshot_ids required: notifications must reference at least one snapshot"}
   end
 
   defp resolve_snapshots(ids, stored_snapshots) do
@@ -649,7 +690,7 @@ defmodule Beamlens.Operator do
 
   defp build_puck_client(skill, client_registry, opts) do
     system_prompt = skill.system_prompt()
-    callback_docs = skill.callback_docs()
+    callback_docs = skill.callback_docs() <> "\n" <> BaseSkill.callback_docs()
 
     backend_config =
       %{
@@ -688,7 +729,7 @@ defmodule Beamlens.Operator do
     - Current system state and trend direction
     - Snapshot IDs referenced (preserve exact IDs)
     - Key metric values that informed decisions
-    - Any alerts fired and their reasons
+    - Any notifications sent and their reasons
 
     Be concise. This summary will be used to continue monitoring.
     """
@@ -703,5 +744,9 @@ defmodule Beamlens.Operator do
         extra
       )
     )
+  end
+
+  defp merged_callbacks(skill) do
+    Map.merge(BaseSkill.callbacks(), skill.callbacks())
   end
 end

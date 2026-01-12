@@ -6,7 +6,7 @@ defmodule Beamlens.Coordinator.InsightTest do
   describe "new/1" do
     test "creates insight with required fields" do
       attrs = %{
-        alert_ids: ["alert1", "alert2"],
+        notification_ids: ["notification1", "notification2"],
         correlation_type: :causal,
         summary: "Memory spike caused scheduler contention",
         confidence: :high
@@ -14,7 +14,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
       insight = Insight.new(attrs)
 
-      assert insight.alert_ids == ["alert1", "alert2"]
+      assert insight.notification_ids == ["notification1", "notification2"]
       assert insight.correlation_type == :causal
       assert insight.summary == "Memory spike caused scheduler contention"
       assert insight.confidence == :high
@@ -22,7 +22,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
     test "generates unique 16-character id" do
       attrs = %{
-        alert_ids: ["a1"],
+        notification_ids: ["n1"],
         correlation_type: :temporal,
         summary: "test",
         confidence: :low
@@ -37,7 +37,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
     test "generates unique ids on each call" do
       attrs = %{
-        alert_ids: ["a1"],
+        notification_ids: ["n1"],
         correlation_type: :temporal,
         summary: "test",
         confidence: :low
@@ -51,7 +51,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
     test "sets created_at to current time" do
       attrs = %{
-        alert_ids: ["a1"],
+        notification_ids: ["n1"],
         correlation_type: :temporal,
         summary: "test",
         confidence: :low
@@ -67,7 +67,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
     test "stores optional root_cause_hypothesis" do
       attrs = %{
-        alert_ids: ["a1"],
+        notification_ids: ["n1"],
         correlation_type: :symptomatic,
         summary: "Multiple symptoms of memory leak",
         root_cause_hypothesis: "Possible unbounded ETS table growth",
@@ -81,7 +81,7 @@ defmodule Beamlens.Coordinator.InsightTest do
 
     test "root_cause_hypothesis defaults to nil" do
       attrs = %{
-        alert_ids: ["a1"],
+        notification_ids: ["n1"],
         correlation_type: :temporal,
         summary: "test",
         confidence: :low
@@ -92,7 +92,7 @@ defmodule Beamlens.Coordinator.InsightTest do
       assert insight.root_cause_hypothesis == nil
     end
 
-    test "raises on missing alert_ids" do
+    test "raises on missing notification_ids" do
       assert_raise KeyError, fn ->
         Insight.new(%{
           correlation_type: :temporal,
@@ -105,7 +105,7 @@ defmodule Beamlens.Coordinator.InsightTest do
     test "raises on missing correlation_type" do
       assert_raise KeyError, fn ->
         Insight.new(%{
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           summary: "test",
           confidence: :low
         })
@@ -115,7 +115,7 @@ defmodule Beamlens.Coordinator.InsightTest do
     test "raises on missing summary" do
       assert_raise KeyError, fn ->
         Insight.new(%{
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           correlation_type: :temporal,
           confidence: :low
         })
@@ -125,7 +125,7 @@ defmodule Beamlens.Coordinator.InsightTest do
     test "raises on missing confidence" do
       assert_raise KeyError, fn ->
         Insight.new(%{
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           correlation_type: :temporal,
           summary: "test"
         })
@@ -137,7 +137,7 @@ defmodule Beamlens.Coordinator.InsightTest do
     test "encodes insight to JSON" do
       insight =
         Insight.new(%{
-          alert_ids: ["a1", "a2"],
+          notification_ids: ["n1", "n2"],
           correlation_type: :causal,
           summary: "test correlation",
           confidence: :high
@@ -150,7 +150,7 @@ defmodule Beamlens.Coordinator.InsightTest do
     test "encoded JSON contains all fields" do
       insight =
         Insight.new(%{
-          alert_ids: ["a1"],
+          notification_ids: ["n1"],
           correlation_type: :temporal,
           summary: "test",
           root_cause_hypothesis: "hypothesis",
@@ -160,7 +160,7 @@ defmodule Beamlens.Coordinator.InsightTest do
       {:ok, json} = Jason.encode(insight)
       decoded = Jason.decode!(json)
 
-      assert decoded["alert_ids"] == ["a1"]
+      assert decoded["notification_ids"] == ["n1"]
       assert decoded["correlation_type"] == "temporal"
       assert decoded["summary"] == "test"
       assert decoded["root_cause_hypothesis"] == "hypothesis"

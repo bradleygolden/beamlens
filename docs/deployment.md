@@ -14,14 +14,14 @@ children = [
 ]
 ```
 
-This starts operators that continuously monitor your application and a Coordinator that correlates alerts into insights.
+This starts operators that continuously monitor your application and a Coordinator that correlates notifications into insights.
 
 ## Running in a Cluster
 
 When running multiple nodes, you probably want:
 - Operators on every node (they monitor node-local metrics)
 - A single Coordinator across the cluster (to avoid duplicate insights)
-- Alerts from all nodes reaching that Coordinator
+- Notifications from all nodes reaching that Coordinator
 
 Add the `pubsub` option to enable this:
 
@@ -50,7 +50,7 @@ defmodule MyApp.BeamlensWorker do
   use Oban.Worker, queue: :monitoring
 
   def perform(%{args: %{"skill" => skill}}) do
-    {:ok, _alerts} = Beamlens.Operator.run_once(String.to_existing_atom(skill), client_registry())
+    {:ok, _notifications} = Beamlens.Operator.run_once(String.to_existing_atom(skill), client_registry())
     :ok
   end
 end

@@ -41,7 +41,7 @@ defmodule Beamlens.Operator.Supervisor do
   use DynamicSupervisor
 
   alias Beamlens.Operator
-  alias Beamlens.Skill.{Beam, Ets, Gc, Logger, Ports, Sup}
+  alias Beamlens.Skill.{Beam, Ets, Gc, Logger, Ports, Sup, System}
 
   @builtin_skills %{
     beam: Beam,
@@ -49,7 +49,8 @@ defmodule Beamlens.Operator.Supervisor do
     gc: Gc,
     logger: Logger,
     ports: Ports,
-    sup: Sup
+    sup: Sup,
+    system: System
   }
 
   def start_link(opts \\ []) do
@@ -139,13 +140,39 @@ defmodule Beamlens.Operator.Supervisor do
   end
 
   @doc """
-  Lists all running operators with their status.
+  Lists all configured operators with their status.
+
+  Returns both running and stopped operators. Running operators include
+  their full status from the Operator process, while stopped operators
+  show `running: false`.
   """
   def list_operators do
-    Registry.select(Beamlens.OperatorRegistry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.map(fn {name, pid} ->
-      status = Operator.status(pid)
-      Map.put(status, :name, name)
+    # Get running operators from registry
+    running_operators =
+      Registry.select(Beamlens.OperatorRegistry, [{{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+      |> Map.new(fn {name, pid} ->
+        status = Operator.status(pid)
+        {name, Map.put(status, :name, name)}
+      end)
+
+    # Get all configured operator names
+    configured = configured_operators()
+
+    # Merge: running operators get their status, stopped ones get a minimal status
+    Enum.map(configured, fn name ->
+      case Map.fetch(running_operators, name) do
+        {:ok, status} ->
+          status
+
+        :error ->
+          %{
+            operator: name,
+            name: name,
+            running: false,
+            state: :stopped,
+            iteration: 0
+          }
+      end
     end)
   end
 
@@ -202,8 +229,15 @@ defmodule Beamlens.Operator.Supervisor do
 
   """
   def configured_operators do
-    Application.get_env(:beamlens, :operators, [])
-    |> Enum.map(&extract_operator_name/1)
+    # Read from persistent_term (set by Beamlens.Supervisor at startup)
+    # Falls back to application env for backwards compatibility
+    operators =
+      case :persistent_term.get({Beamlens.Supervisor, :operators}, :not_found) do
+        :not_found -> Application.get_env(:beamlens, :operators, [])
+        ops -> ops
+      end
+
+    Enum.map(operators, &extract_operator_name/1)
   end
 
   defp extract_operator_name(skill) when is_atom(skill), do: skill

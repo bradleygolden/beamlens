@@ -4,8 +4,8 @@ defmodule Beamlens.Operator.Tools do
 
   Tools:
   - SetState: Update operator state
-  - FireAlert: Create an alert with referenced snapshots
-  - GetAlerts: See previous alerts for correlation
+  - SendNotification: Create a notification with referenced snapshots
+  - GetNotifications: See previous notifications for correlation
   - TakeSnapshot: Capture current metrics with unique ID
   - GetSnapshot: Retrieve a specific snapshot by ID
   - GetSnapshots: Retrieve multiple snapshots with pagination
@@ -25,7 +25,7 @@ defmodule Beamlens.Operator.Tools do
           }
   end
 
-  defmodule FireAlert do
+  defmodule SendNotification do
     @moduledoc false
     defstruct [:intent, :type, :summary, :severity, :snapshot_ids]
 
@@ -38,7 +38,7 @@ defmodule Beamlens.Operator.Tools do
           }
   end
 
-  defmodule GetAlerts do
+  defmodule GetNotifications do
     @moduledoc false
     defstruct [:intent]
 
@@ -111,8 +111,8 @@ defmodule Beamlens.Operator.Tools do
   def schema do
     Zoi.union([
       set_state_schema(),
-      fire_alert_schema(),
-      get_alerts_schema(),
+      send_notification_schema(),
+      get_notifications_schema(),
       take_snapshot_schema(),
       get_snapshot_schema(),
       get_snapshots_schema(),
@@ -133,9 +133,9 @@ defmodule Beamlens.Operator.Tools do
     |> Zoi.transform(fn data -> {:ok, struct!(SetState, data)} end)
   end
 
-  defp fire_alert_schema do
+  defp send_notification_schema do
     Zoi.object(%{
-      intent: Zoi.literal("fire_alert"),
+      intent: Zoi.literal("send_notification"),
       type: Zoi.string(),
       summary: Zoi.string(),
       severity:
@@ -143,12 +143,12 @@ defmodule Beamlens.Operator.Tools do
         |> Zoi.transform(&atomize_severity/1),
       snapshot_ids: Zoi.list(Zoi.string())
     })
-    |> Zoi.transform(fn data -> {:ok, struct!(FireAlert, data)} end)
+    |> Zoi.transform(fn data -> {:ok, struct!(SendNotification, data)} end)
   end
 
-  defp get_alerts_schema do
-    Zoi.object(%{intent: Zoi.literal("get_alerts")})
-    |> Zoi.transform(fn data -> {:ok, struct!(GetAlerts, data)} end)
+  defp get_notifications_schema do
+    Zoi.object(%{intent: Zoi.literal("get_notifications")})
+    |> Zoi.transform(fn data -> {:ok, struct!(GetNotifications, data)} end)
   end
 
   defp take_snapshot_schema do
@@ -167,8 +167,8 @@ defmodule Beamlens.Operator.Tools do
   defp get_snapshots_schema do
     Zoi.object(%{
       intent: Zoi.literal("get_snapshots"),
-      limit: Zoi.optional(Zoi.integer()),
-      offset: Zoi.optional(Zoi.integer())
+      limit: Zoi.nullish(Zoi.integer()),
+      offset: Zoi.nullish(Zoi.integer())
     })
     |> Zoi.transform(fn data -> {:ok, struct!(GetSnapshots, data)} end)
   end

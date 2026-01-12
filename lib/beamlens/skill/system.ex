@@ -102,10 +102,12 @@ defmodule Beamlens.Skill.System do
     data = :memsup.get_system_memory_data()
     total = Keyword.get(data, :total_memory, 0)
     free = Keyword.get(data, :free_memory, 0)
-    used = total - free
+    available = Keyword.get(data, :available_memory, free)
+    used = total - available
 
     %{
       total_mb: bytes_to_mb(total),
+      available_mb: bytes_to_mb(available),
       free_mb: bytes_to_mb(free),
       used_mb: bytes_to_mb(used),
       used_pct: percentage(used, total),
@@ -116,6 +118,7 @@ defmodule Beamlens.Skill.System do
 
   defp disk_stats do
     :disksup.get_disk_data()
+    |> Enum.filter(&relevant_disk?/1)
     |> Enum.map(fn {mount, total_kb, used_pct} ->
       %{
         mount: to_string(mount),
@@ -123,6 +126,11 @@ defmodule Beamlens.Skill.System do
         used_pct: used_pct
       }
     end)
+  end
+
+  defp relevant_disk?({mount, _total_kb, _pct}) do
+    path = to_string(mount)
+    not String.contains?(path, ["CoreSimulator", "Xcode", "TimeMachine", "/private/var/vm"])
   end
 
   defp cpu_load(avg_fun) do
@@ -140,9 +148,17 @@ defmodule Beamlens.Skill.System do
   end
 
   defp highest_disk_usage_pct do
-    case :disksup.get_disk_data() do
-      [] -> 0
-      disks -> disks |> Enum.map(&elem(&1, 2)) |> Enum.max()
+    :disksup.get_disk_data()
+    |> Enum.filter(&relevant_disk?/1)
+    |> pick_disk_pct()
+  end
+
+  defp pick_disk_pct([]), do: 0
+
+  defp pick_disk_pct(disks) do
+    case Enum.find(disks, fn {m, _, _} -> List.to_string(m) == "/" end) do
+      {_, _, pct} -> pct
+      nil -> disks |> Enum.max_by(&elem(&1, 2)) |> elem(2)
     end
   end
 

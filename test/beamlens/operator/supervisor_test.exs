@@ -87,6 +87,13 @@ defmodule Beamlens.Operator.SupervisorTest do
     end
 
     test "returns list of operator statuses", %{supervisor: supervisor} do
+      :persistent_term.put({Beamlens.Supervisor, :operators}, [
+        [name: :operator1, skill: TestSkill],
+        [name: :operator2, skill: TestSkill]
+      ])
+
+      on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
+
       OperatorSupervisor.start_operator(supervisor,
         name: :operator1,
         skill: TestSkill,

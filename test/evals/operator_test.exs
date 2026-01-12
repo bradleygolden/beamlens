@@ -2,7 +2,7 @@ defmodule Beamlens.Evals.OperatorTest do
   use ExUnit.Case, async: false
 
   alias Beamlens.Operator
-  alias Beamlens.Operator.Tools.{FireAlert, TakeSnapshot, Wait}
+  alias Beamlens.Operator.Tools.{SendNotification, TakeSnapshot, Wait}
   alias Puck.Eval.Graders
 
   @moduletag :eval
@@ -39,7 +39,7 @@ defmodule Beamlens.Evals.OperatorTest do
   end
 
   describe "operator happy path eval" do
-    test "healthy metrics lead to TakeSnapshot and eventually Wait (no alerts)" do
+    test "healthy metrics lead to TakeSnapshot and eventually Wait (no notifications)" do
       {_output, trajectory} =
         Puck.Eval.collect(
           fn ->
@@ -53,7 +53,7 @@ defmodule Beamlens.Evals.OperatorTest do
       result =
         Puck.Eval.grade(nil, trajectory, [
           Graders.output_produced(TakeSnapshot),
-          Graders.output_not_produced(FireAlert),
+          Graders.output_not_produced(SendNotification),
           Graders.output_produced(Wait)
         ])
 

@@ -3,7 +3,7 @@ defmodule Beamlens.Operator.Snapshot do
   Wrapper struct for snapshots with unique ID and timestamp.
 
   Snapshots are captured via `take_snapshot` and stored in the operator's
-  GenServer state. When firing alerts, the LLM references snapshots by ID
+  GenServer state. When sending notifications, the LLM references snapshots by ID
   to include relevant evidence.
   """
 

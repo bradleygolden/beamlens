@@ -18,7 +18,7 @@ The system is built on standard OTP principles.
 
 - **Operator**: A `GenServer` you add to your application's supervision tree. It runs a simple, LLM-driven loop:
     1. Collect a snapshot of system state using a `Skill`.
-    2. The LLM analyzes the snapshot and selects a tool (e.g., investigate deeper, fire an alert, or wait).
+    2. The LLM analyzes the snapshot and selects a tool (e.g., investigate deeper, send a notification, or wait).
     3. The tool is executed and the loop continues.
 
     The `Operator` is just another process. If it crashes, your supervisor restarts it.
@@ -207,22 +207,22 @@ Register your skill:
 
 ## Telemetry
 
-Subscribe to alerts:
+Subscribe to notifications:
 
 ```elixir
-:telemetry.attach("my-alerts", [:beamlens, :operator, :alert_fired], fn
-  _event, _measurements, %{alert: alert}, _config ->
-    Logger.warning("BeamLens: #{alert.summary}")
+:telemetry.attach("my-notifications", [:beamlens, :operator, :notification_sent], fn
+  _event, _measurements, %{notification: notification}, _config ->
+    Logger.warning("BeamLens: #{notification.summary}")
 end, nil)
 ```
 
-## Alert Correlation
+## Notification Correlation
 
-The Coordinator receives alerts from all operators and correlates them. When multiple alerts fire together, it identifies patterns:
+The Coordinator receives notifications from all operators and correlates them. When multiple notifications are sent together, it identifies patterns:
 
-- **temporal** — Alerts occurred close in time
-- **causal** — One alert caused another
-- **symptomatic** — Alerts share a common hidden cause
+- **temporal** — Notifications occurred close in time
+- **causal** — One notification caused another
+- **symptomatic** — Notifications share a common hidden cause
 
 Subscribe to insights:
 

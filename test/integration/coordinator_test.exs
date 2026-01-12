@@ -4,7 +4,7 @@ defmodule Beamlens.Integration.CoordinatorTest do
   use Beamlens.IntegrationCase, async: false
 
   alias Beamlens.Coordinator
-  alias Beamlens.Operator.Alert
+  alias Beamlens.Operator.Notification
 
   defp start_coordinator(context, opts \\ []) do
     name = :"coordinator_#{:erlang.unique_integer([:positive])}"
@@ -17,14 +17,14 @@ defmodule Beamlens.Integration.CoordinatorTest do
     start_supervised({Coordinator, opts})
   end
 
-  defp build_test_alert(overrides \\ %{}) do
-    Alert.new(
+  defp build_test_notification(overrides \\ %{}) do
+    Notification.new(
       Map.merge(
         %{
           operator: :integration_test,
           anomaly_type: "test_anomaly",
           severity: :warning,
-          summary: "Test alert for integration testing",
+          summary: "Test notification for integration testing",
           snapshots: []
         },
         overrides
@@ -32,14 +32,14 @@ defmodule Beamlens.Integration.CoordinatorTest do
     )
   end
 
-  defp inject_alert(pid, alert) do
-    GenServer.cast(pid, {:alert_received, alert})
-    alert
+  defp inject_notification(pid, notification) do
+    GenServer.cast(pid, {:notification_received, notification})
+    notification
   end
 
   describe "coordinator lifecycle" do
     @tag timeout: 30_000
-    test "starts and processes an injected alert", context do
+    test "starts and processes an injected notification", context do
       ref = make_ref()
       parent = self()
       on_exit(fn -> :telemetry.detach(ref) end)
@@ -55,8 +55,8 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       {:ok, pid} = start_coordinator(context)
 
-      alert = build_test_alert()
-      inject_alert(pid, alert)
+      notification = build_test_notification()
+      inject_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 10_000
     end
@@ -78,8 +78,8 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       {:ok, pid} = start_coordinator(context)
 
-      alert = build_test_alert()
-      inject_alert(pid, alert)
+      notification = build_test_notification()
+      inject_notification(pid, notification)
 
       assert_receive {:telemetry, :llm_start, %{trace_id: trace_id}}, 15_000
       assert is_binary(trace_id)
@@ -91,8 +91,8 @@ defmodule Beamlens.Integration.CoordinatorTest do
       parent = self()
 
       events = [
-        [:beamlens, :coordinator, :get_alerts],
-        [:beamlens, :coordinator, :update_alert_statuses],
+        [:beamlens, :coordinator, :get_notifications],
+        [:beamlens, :coordinator, :update_notification_statuses],
         [:beamlens, :coordinator, :insight_produced],
         [:beamlens, :coordinator, :done],
         [:beamlens, :coordinator, :llm_error]
@@ -117,16 +117,27 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       {:ok, pid} = start_coordinator(context)
 
-      alert = build_test_alert(%{summary: "Memory at 85% - elevated but not critical"})
-      inject_alert(pid, alert)
+      notification =
+        build_test_notification(%{summary: "Memory at 85% - elevated but not critical"})
+
+      inject_notification(pid, notification)
 
       received_event =
         receive do
-          {:telemetry, [:beamlens, :coordinator, :get_alerts], _} -> :get_alerts
-          {:telemetry, [:beamlens, :coordinator, :update_alert_statuses], _} -> :update_statuses
-          {:telemetry, [:beamlens, :coordinator, :insight_produced], _} -> :insight_produced
-          {:telemetry, [:beamlens, :coordinator, :done], _} -> :done
-          {:telemetry, [:beamlens, :coordinator, :llm_error], metadata} -> {:llm_error, metadata}
+          {:telemetry, [:beamlens, :coordinator, :get_notifications], _} ->
+            :get_notifications
+
+          {:telemetry, [:beamlens, :coordinator, :update_notification_statuses], _} ->
+            :update_statuses
+
+          {:telemetry, [:beamlens, :coordinator, :insight_produced], _} ->
+            :insight_produced
+
+          {:telemetry, [:beamlens, :coordinator, :done], _} ->
+            :done
+
+          {:telemetry, [:beamlens, :coordinator, :llm_error], metadata} ->
+            {:llm_error, metadata}
         after
           30_000 -> :timeout
         end
@@ -138,20 +149,20 @@ defmodule Beamlens.Integration.CoordinatorTest do
         :timeout ->
           flunk("Timeout waiting for tool action - no telemetry received")
 
-        event when event in [:get_alerts, :update_statuses, :insight_produced, :done] ->
+        event when event in [:get_notifications, :update_statuses, :insight_produced, :done] ->
           assert true
       end
     end
   end
 
-  describe "multi-alert processing" do
+  describe "multi-notification processing" do
     @tag timeout: 90_000
-    test "handles multiple related alerts", context do
+    test "handles multiple related notifications", context do
       ref = make_ref()
       parent = self()
 
       events = [
-        [:beamlens, :coordinator, :alert_received],
+        [:beamlens, :coordinator, :notification_received],
         [:beamlens, :coordinator, :iteration_start]
       ]
 
@@ -174,37 +185,39 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       {:ok, pid} = start_coordinator(context)
 
-      alert1 =
-        build_test_alert(%{
+      notification1 =
+        build_test_notification(%{
           operator: :beam,
           anomaly_type: "memory_elevated",
           severity: :warning,
           summary: "Memory at 78% - elevated usage detected"
         })
 
-      alert2 =
-        build_test_alert(%{
+      notification2 =
+        build_test_notification(%{
           operator: :beam,
           anomaly_type: "scheduler_contention",
           severity: :warning,
           summary: "Run queue at 45 - scheduler pressure detected"
         })
 
-      inject_alert(pid, alert1)
+      inject_notification(pid, notification1)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :alert_received], %{alert_id: _}},
+      assert_receive {:telemetry, [:beamlens, :coordinator, :notification_received],
+                      %{notification_id: _}},
                      5_000
 
-      inject_alert(pid, alert2)
+      inject_notification(pid, notification2)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :alert_received], %{alert_id: _}},
+      assert_receive {:telemetry, [:beamlens, :coordinator, :notification_received],
+                      %{notification_id: _}},
                      5_000
 
       assert_receive {:telemetry, [:beamlens, :coordinator, :iteration_start], %{iteration: _}},
                      10_000
 
       status = Coordinator.status(pid)
-      assert status.alert_count == 2
+      assert status.notification_count == 2
     end
   end
 end

@@ -27,11 +27,14 @@ defmodule Beamlens.Skill.Sup do
     - Active vs inactive children
 
     ## What to Watch For
-    - Children in :restarting state: crash loops
-    - Undefined child PIDs: failed starts
-    - Supervisors with many children: potential bottleneck
+    - Children in :restarting state: active crash loops requiring attention
+    - Supervisors with many children (100+): potential bottleneck
     - Asymmetric tree depth: architectural issues
-    - Missing expected supervisors: startup failures
+
+    ## Normal Behavior (NOT anomalies)
+    - A few undefined child PIDs are normal - these are optional features that are configured but intentionally not started (e.g., disabled audit logging, optional workers)
+    - Children named "Expunger", "Batcher", or similar utility workers being undefined is expected when their parent feature is disabled
+    - Do NOT send notifications for small numbers (< 10) of undefined children unless they are in :restarting state
     """
   end
 
@@ -110,8 +113,7 @@ defmodule Beamlens.Skill.Sup do
     end
   end
 
-  defp supervisor_initial_call?({Supervisor, :init, _}), do: true
-  defp supervisor_initial_call?({:supervisor, :init, _}), do: true
+  defp supervisor_initial_call?({:supervisor, _, _}), do: true
   defp supervisor_initial_call?(_), do: false
 
   defp supervisor_summary(pid) do
