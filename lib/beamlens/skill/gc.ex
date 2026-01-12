@@ -13,6 +13,9 @@ defmodule Beamlens.Skill.Gc do
   def id, do: :gc
 
   @impl true
+  def title, do: "Garbage Collection"
+
+  @impl true
   def description, do: "Garbage collection: heap sizes, GC frequency, memory pressure"
 
   @impl true

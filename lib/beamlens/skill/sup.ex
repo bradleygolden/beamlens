@@ -13,6 +13,9 @@ defmodule Beamlens.Skill.Sup do
   def id, do: :sup
 
   @impl true
+  def title, do: "Supervisors"
+
+  @impl true
   def description, do: "Supervisors: tree structure, child states, restart patterns"
 
   @impl true

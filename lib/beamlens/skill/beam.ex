@@ -15,6 +15,9 @@ defmodule Beamlens.Skill.Beam do
   def id, do: :beam
 
   @impl true
+  def title, do: "BEAM VM"
+
+  @impl true
   def description, do: "BEAM VM health: memory, processes, schedulers, atoms"
 
   @impl true

@@ -144,7 +144,8 @@ defmodule Beamlens.Operator.Supervisor do
 
   Returns both running and stopped operators. Running operators include
   their full status from the Operator process, while stopped operators
-  show `running: false`.
+  show `running: false`. All operators include `title` and `description`
+  from their skill module for frontend display.
   """
   def list_operators do
     # Get running operators from registry
@@ -155,24 +156,29 @@ defmodule Beamlens.Operator.Supervisor do
         {name, Map.put(status, :name, name)}
       end)
 
-    # Get all configured operator names
-    configured = configured_operators()
+    # Get all configured operator specs with skill modules
+    configured_operator_specs()
+    |> Enum.map(fn {name, skill_module} ->
+      base_status =
+        case Map.fetch(running_operators, name) do
+          {:ok, status} ->
+            status
 
-    # Merge: running operators get their status, stopped ones get a minimal status
-    Enum.map(configured, fn name ->
-      case Map.fetch(running_operators, name) do
-        {:ok, status} ->
-          status
+          :error ->
+            %{
+              operator: name,
+              name: name,
+              running: false,
+              state: :stopped,
+              iteration: 0
+            }
+        end
 
-        :error ->
-          %{
-            operator: name,
-            name: name,
-            running: false,
-            state: :stopped,
-            iteration: 0
-          }
-      end
+      # Enrich with skill metadata
+      Map.merge(base_status, %{
+        title: skill_module.title(),
+        description: skill_module.description()
+      })
     end)
   end
 
@@ -242,6 +248,24 @@ defmodule Beamlens.Operator.Supervisor do
 
   defp extract_operator_name(skill) when is_atom(skill), do: skill
   defp extract_operator_name(opts) when is_list(opts), do: Keyword.fetch!(opts, :name)
+
+  defp configured_operator_specs do
+    operators =
+      case :persistent_term.get({Beamlens.Supervisor, :operators}, :not_found) do
+        :not_found -> Application.get_env(:beamlens, :operators, [])
+        ops -> ops
+      end
+
+    Enum.map(operators, &extract_operator_spec/1)
+  end
+
+  defp extract_operator_spec(skill) when is_atom(skill) do
+    {skill, Map.fetch!(@builtin_skills, skill)}
+  end
+
+  defp extract_operator_spec(opts) when is_list(opts) do
+    {Keyword.fetch!(opts, :name), Keyword.fetch!(opts, :skill)}
+  end
 
   defp via_registry(name) do
     {:via, Registry, {Beamlens.OperatorRegistry, name}}

@@ -29,6 +29,9 @@ defmodule Beamlens.Skill.Logger do
   def id, do: :logger
 
   @impl true
+  def title, do: "Application Logs"
+
+  @impl true
   def description, do: "Application logs: error rates, patterns, module-specific issues"
 
   @impl true

@@ -30,6 +30,9 @@ defmodule Beamlens.Skill.System do
   def id, do: :system
 
   @impl true
+  def title, do: "System Resources"
+
+  @impl true
   def description, do: "OS resources: CPU load, system memory, disk usage"
 
   @impl true

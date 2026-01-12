@@ -48,6 +48,11 @@ defmodule Beamlens.Skill.Ecto do
       def id, do: :ecto
 
       @impl true
+      def title do
+        @ecto_module.title()
+      end
+
+      @impl true
       def description do
         @ecto_module.description()
       end
@@ -73,6 +78,8 @@ defmodule Beamlens.Skill.Ecto do
       end
     end
   end
+
+  def title, do: "Database"
 
   def description, do: "Database: query performance, connection pool, slow queries"
 

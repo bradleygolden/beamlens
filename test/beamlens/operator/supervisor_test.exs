@@ -10,6 +10,8 @@ defmodule Beamlens.Operator.SupervisorTest do
 
     def id, do: :test_skill
 
+    def title, do: "Test Skill"
+
     def description, do: "Test skill for supervisor tests"
 
     def system_prompt, do: "You are a test skill for supervisor tests."
@@ -112,6 +114,39 @@ defmodule Beamlens.Operator.SupervisorTest do
       names = Enum.map(operators, & &1.name)
       assert :operator1 in names
       assert :operator2 in names
+    end
+
+    test "includes title and description from skill module", %{supervisor: supervisor} do
+      :persistent_term.put({Beamlens.Supervisor, :operators}, [
+        [name: :metadata_test, skill: TestSkill]
+      ])
+
+      on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
+
+      OperatorSupervisor.start_operator(supervisor,
+        name: :metadata_test,
+        skill: TestSkill,
+        start_loop: false
+      )
+
+      [operator] = OperatorSupervisor.list_operators()
+
+      assert operator.title == "Test Skill"
+      assert operator.description == "Test skill for supervisor tests"
+    end
+
+    test "includes title and description for stopped operators", %{supervisor: _supervisor} do
+      :persistent_term.put({Beamlens.Supervisor, :operators}, [
+        [name: :stopped_op, skill: TestSkill]
+      ])
+
+      on_exit(fn -> :persistent_term.erase({Beamlens.Supervisor, :operators}) end)
+
+      [operator] = OperatorSupervisor.list_operators()
+
+      assert operator.running == false
+      assert operator.title == "Test Skill"
+      assert operator.description == "Test skill for supervisor tests"
     end
   end
 

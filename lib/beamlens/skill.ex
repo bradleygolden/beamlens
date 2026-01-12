@@ -8,6 +8,7 @@ defmodule Beamlens.Skill do
   ## Required Callbacks
 
   - `id/0` - Returns the skill identifier atom (e.g., `:beam`)
+  - `title/0` - Returns a human-readable title for UI display (e.g., "BEAM VM")
   - `description/0` - Returns a brief (1-line) summary for the Coordinator
   - `system_prompt/0` - Returns the operator's identity and monitoring focus
   - `snapshot/0` - Returns high-level metrics for quick health assessment
@@ -151,6 +152,9 @@ defmodule Beamlens.Skill do
         def id, do: :redis
 
         @impl true
+        def title, do: "Redis Cache"
+
+        @impl true
         def description, do: "Redis cache: hit rates, memory, key distribution"
 
         @impl true
@@ -231,6 +235,7 @@ defmodule Beamlens.Skill do
   """
 
   @callback id() :: atom()
+  @callback title() :: String.t()
   @callback description() :: String.t()
   @callback system_prompt() :: String.t()
   @callback snapshot() :: map()

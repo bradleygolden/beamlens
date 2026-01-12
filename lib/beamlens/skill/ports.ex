@@ -13,6 +13,9 @@ defmodule Beamlens.Skill.Ports do
   def id, do: :ports
 
   @impl true
+  def title, do: "Ports"
+
+  @impl true
   def description, do: "Ports: file descriptors, sockets, I/O throughput"
 
   @impl true

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `title/0` callback in Skill behaviour for frontend-friendly display names
+- `list_operators/0` now includes `title` and `description` from skill modules
 - `Beamlens.Skill.Base` module with common callbacks for all skills (`get_current_time`, `get_node_info`)
 - `description/0` callback in Skill behaviour for operator summaries
 - `system_prompt/0` callback in Skill behaviour for operator identity

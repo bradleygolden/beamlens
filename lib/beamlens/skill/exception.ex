@@ -36,6 +36,9 @@ if Code.ensure_loaded?(Tower) do
     def id, do: :exception
 
     @impl true
+    def title, do: "Exceptions"
+
+    @impl true
     def description, do: "Exceptions: error types, crash patterns, stacktraces"
 
     @impl true

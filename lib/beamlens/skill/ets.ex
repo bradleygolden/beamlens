@@ -13,6 +13,9 @@ defmodule Beamlens.Skill.Ets do
   def id, do: :ets
 
   @impl true
+  def title, do: "ETS Tables"
+
+  @impl true
   def description, do: "ETS tables: memory usage, table sizes, growth patterns"
 
   @impl true

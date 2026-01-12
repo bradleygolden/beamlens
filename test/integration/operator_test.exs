@@ -8,6 +8,8 @@ defmodule Beamlens.Integration.OperatorTest do
 
     def id, do: :integration_test
 
+    def title, do: "Integration Test"
+
     def description, do: "Test skill for integration tests"
 
     def system_prompt, do: "You are a test skill for integration tests."
