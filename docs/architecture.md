@@ -19,6 +19,7 @@ graph TD
     S --> OR[OperatorRegistry]
     S -.-> LS[LogStore]
     S -.-> ES[ExceptionStore]
+    S -.-> NF[NotificationForwarder]
     S --> OS[Operator.Supervisor]
     S --> CO[Coordinator]
 
@@ -29,7 +30,7 @@ graph TD
 
 Each operator runs independently. If one crashes, others continue operating. The Coordinator receives notifications from all operators and correlates them into insights.
 
-> **Note:** LogStore and ExceptionStore (shown with dashed lines) are only started when their respective operators (`:logger`, `:exception`) are configured. LogStore captures application logs via an Erlang `:logger` handler. ExceptionStore captures exceptions via Tower's reporter system.
+> **Note:** LogStore, ExceptionStore, and NotificationForwarder (shown with dashed lines) are conditionally started. LogStore and ExceptionStore require their respective operators (`:logger`, `:exception`). NotificationForwarder is started when `:pubsub` is configured for clustered deployments.
 
 ## Operator Loop
 
@@ -107,13 +108,19 @@ The Coordinator is a GenServer that receives notifications from all operators an
 
 ### Coordinator Tools
 
-| Tool | Description |
-|------|-------------|
-| `get_notifications` | Query notifications, optionally filtered by status |
-| `update_notification_statuses` | Set status on multiple notifications |
-| `produce_insight` | Create insight correlating notifications (auto-resolves them) |
-| `done` | End processing, wait for next notification |
-| `think` | Reason through complex decisions before acting |
+| Tool | Description | Mode |
+|------|-------------|------|
+| `get_notifications` | Query notifications, optionally filtered by status | Both |
+| `update_notification_statuses` | Set status on multiple notifications | Both |
+| `produce_insight` | Create insight correlating notifications (auto-resolves them) | Both |
+| `done` | End processing, wait for next notification | Both |
+| `think` | Reason through complex decisions before acting | Both |
+| `invoke_operators` | Spawn multiple operators in parallel | On-demand |
+| `message_operator` | Send message to running operator, get LLM response | On-demand |
+| `get_operator_statuses` | Check status of running operators | On-demand |
+| `wait` | Pause loop for specified duration | On-demand |
+
+> **Note:** The `done` tool behaves differently depending on mode. In continuous mode, it ends the current processing cycle and the loop resumes when new notifications arrive. In on-demand mode, it signals completion and stops the process, returning accumulated results.
 
 ### Correlation Types
 
@@ -163,6 +170,17 @@ return {memory = mem, top_procs = procs}
 
 See the skill sections below for available callbacks per skill.
 
+## Base Callbacks
+
+All operators have access to these common callbacks regardless of their skill:
+
+| Callback | Description |
+|----------|-------------|
+| `get_current_time()` | Returns UTC timestamp (ISO 8601 format and Unix milliseconds) |
+| `get_node_info()` | Returns node name, uptime in seconds, OS type and name |
+
+These callbacks are provided by `Beamlens.Skill.Base` and are automatically available in the Lua sandbox for all operators.
+
 ## Telemetry Events
 
 Operators and the Coordinator emit telemetry events for observability. Key events:
@@ -197,11 +215,12 @@ See `Beamlens.Telemetry` for the complete event list.
 
 ## LLM Integration
 
-BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Three BAML functions handle the agent loops:
+BeamLens uses [BAML](https://docs.boundaryml.com) for type-safe LLM prompts via [Puck](https://github.com/bradleygolden/puck). Four BAML functions handle the agent loops:
 
 - **OperatorLoop**: Continuous monitoring loop (uses `wait()` for pacing)
 - **OperatorRun**: On-demand analysis loop (uses `done()` to signal completion)
-- **CoordinatorLoop**: Notification correlation agent that identifies patterns across operators
+- **CoordinatorLoop**: Continuous notification correlation agent
+- **CoordinatorRun**: On-demand coordinator with operator invocation capabilities
 
 Default LLM: Anthropic Claude Haiku (`claude-haiku-4-5-20251001`)
 
@@ -275,7 +294,6 @@ Compaction events are emitted via telemetry: `[:beamlens, :compaction, :start]` 
 Monitors BEAM VM runtime health.
 
 **Snapshot Metrics:**
-- Memory utilization %
 - Process utilization %
 - Port utilization %
 - Atom utilization %
@@ -501,6 +519,25 @@ defmodule MyApp.Skills.Postgres do
 
   @impl true
   def id, do: :postgres
+
+  @impl true
+  def title, do: "PostgreSQL"
+
+  @impl true
+  def description, do: "PostgreSQL database: connections, query performance, pool health"
+
+  @impl true
+  def system_prompt do
+    """
+    You are a PostgreSQL database monitor. Track connection pool health,
+    query performance, and database resource utilization.
+
+    ## What to Watch For
+    - Pool exhaustion (checked_out approaching pool_size)
+    - Slow query accumulation
+    - Connection queue buildup
+    """
+  end
 
   @impl true
   def snapshot do

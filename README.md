@@ -23,7 +23,7 @@ The system is built on standard OTP principles.
 
     The `Operator` is just another process. If it crashes, your supervisor restarts it.
 
-- **Skills**: Elixir `Behaviours` that expose functinality to the `Operator`. You implement the `Beamlens.Skill` behaviour to provide access to application-specific state, such as ETS table sizes, process mailboxes, or Ecto query statistics.
+- **Skills**: Elixir `Behaviours` that expose functionality to the `Operator`. You implement the `Beamlens.Skill` behaviour to provide access to application-specific state, such as ETS table sizes, process mailboxes, or Ecto query statistics.
 
 - **Execution**: Tool execution is sandboxed in a Lua environment by default, preventing unintended side effects.
 
@@ -161,6 +161,9 @@ defmodule MyApp.Skills.Redis do
   def id, do: :redis
 
   @impl true
+  def title, do: "Redis Cache"
+
+  @impl true
   def description, do: "Redis cache: hit rates, memory, key distribution"
 
   @impl true
@@ -231,6 +234,10 @@ Register your skill:
 - Keep snapshots fast—they're called frequently
 - Write clear `callback_docs`—the LLM uses them to understand your API
 
+All skills automatically have access to base callbacks from `Beamlens.Skill.Base`:
+- `get_current_time()` — Returns current UTC timestamp
+- `get_node_info()` — Returns node name, uptime, and OS info
+
 ## Telemetry
 
 Subscribe to notifications:
@@ -257,6 +264,14 @@ Subscribe to insights:
   _event, _measurements, %{insight: insight}, _config ->
     Logger.info("Insight: #{insight.summary}")
 end, nil)
+```
+
+For one-shot analysis with operator invocation:
+
+```elixir
+{:ok, result} = Beamlens.Coordinator.run(notifications, client_registry(),
+  context: %{reason: "incident investigation"}
+)
 ```
 
 ## Configuration
