@@ -26,6 +26,15 @@ defmodule Beamlens.Skill.EctoTest do
     end
   end
 
+  describe "title/0" do
+    test "returns a non-empty string" do
+      title = TestEctoDomain.title()
+
+      assert is_binary(title)
+      assert String.length(title) > 0
+    end
+  end
+
   describe "snapshot/0" do
     test "returns snapshot with expected keys" do
       snapshot = TestEctoDomain.snapshot()

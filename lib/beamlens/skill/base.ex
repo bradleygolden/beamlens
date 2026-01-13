@@ -9,7 +9,7 @@ defmodule Beamlens.Skill.Base do
   ## Available Callbacks
 
   - `get_current_time()` - Returns current UTC timestamp
-  - `get_node_info()` - Returns node name and uptime
+  - `get_node_info()` - Returns node name, uptime, and OS info
   """
 
   @doc """

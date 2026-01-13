@@ -17,6 +17,15 @@ defmodule Beamlens.Skill.LoggerTest do
     end
   end
 
+  describe "title/0" do
+    test "returns a non-empty string" do
+      title = LoggerDomain.title()
+
+      assert is_binary(title)
+      assert String.length(title) > 0
+    end
+  end
+
   describe "description/0" do
     test "returns a non-empty string" do
       description = LoggerDomain.description()
@@ -52,7 +61,7 @@ defmodule Beamlens.Skill.LoggerTest do
       assert is_integer(snapshot.total_logs_1m)
       assert is_integer(snapshot.error_count_1m)
       assert is_integer(snapshot.warning_count_1m)
-      assert is_float(snapshot.error_rate_pct) or is_integer(snapshot.error_rate_pct)
+      assert is_float(snapshot.error_rate_pct)
       assert is_integer(snapshot.unique_error_modules)
     end
   end

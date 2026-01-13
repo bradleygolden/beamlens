@@ -9,21 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Beamlens.Operator.run/3` for on-demand analysis that returns when complete
-- `Beamlens.Operator.await/2` to wait for on-demand operator results
-- `:context` option to pass trigger context (e.g., alert reason) to operators
-- `done` tool allowing LLM to signal analysis completion in on-demand mode
-- `title/0` callback in Skill behaviour for frontend-friendly display names
-- `list_operators/0` now includes `title` and `description` from skill modules
-- `Beamlens.Skill.Base` module with common callbacks for all skills (`get_current_time`, `get_node_info`)
-- `description/0` callback in Skill behaviour for operator summaries
-- `system_prompt/0` callback in Skill behaviour for operator identity
-- `Beamlens.Operator.Supervisor.configured_operators/0` to list operator names
+- Run operators on-demand and get results back immediately via `Beamlens.Operator.run/3`
+- Wait for on-demand operator results with configurable timeout via `Beamlens.Operator.await/2`
+- Pass trigger context (e.g., alert reason) to operators via `:context` option
+- On-demand operators signal when analysis is complete via the `done` tool
+- Skills can define human-readable titles for UI display via `title/0` callback
+- Operator listings now include titles and descriptions from skill modules
+- All skills have access to common callbacks: current time and node info via `Beamlens.Skill.Base`
+- Skills can define descriptions for Coordinator context via `description/0` callback
+- Skills can define their own system prompt for LLM identity via `system_prompt/0` callback
+- List configured operator names via `Beamlens.Operator.Supervisor.configured_operators/0`
 - Custom skill creation guide in README
-- Configurable compaction (`:compaction_max_tokens`, `:compaction_keep_last`)
+- Configurable conversation compaction to manage memory in long-running operators
 - Compaction telemetry events (`[:beamlens, :compaction, :start]`, `[:beamlens, :compaction, :stop]`)
 - Think tool for reasoning before actions
 - Coordinator agent that correlates notifications across operators into unified insights
+- `Beamlens.Coordinator.run/3` for one-shot coordinator analysis with operator invocation
 - `Beamlens.Coordinator.status/1` — get coordinator running state and notification counts
 - Telemetry events for coordinator (`[:beamlens, :coordinator, *]`)
 - Autonomous operator system — LLM-driven loops that monitor domains and send notifications
@@ -38,27 +39,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built-in System skill for OS-level monitoring (CPU load, memory usage, disk space via os_mon)
 - Built-in Exception skill for exception monitoring via optional `tower` dependency
 - `Beamlens.Skill` behaviour for implementing custom monitoring skills
-- `callback_docs/0` callback in Skill behaviour for dynamic LLM documentation
-- `Beamlens.list_operators/0` — list all running operators with status
-- `Beamlens.operator_status/1` — get details about a specific operator
+- Skills can provide dynamic documentation for LLM callbacks via `callback_docs/0`
+- List all running operators with status via `Beamlens.list_operators/0`
+- Get details about a specific operator via `Beamlens.operator_status/1`
 - `:client_registry` option to configure custom LLM providers (OpenAI, Ollama, AWS Bedrock, Google Gemini, etc.)
 - LLM provider configuration guide with retry policies, fallback chains, and round-robin patterns
 - Telemetry events for observability (operator lifecycle, LLM calls, notifications)
-- Lua sandbox for safe metric collection callbacks
+- Skills run callbacks in a safe Lua sandbox environment
+- Cluster support via optional `pubsub` option for cross-node notification broadcasting
+- `Beamlens.Skill.Ecto.Global` for cluster-singleton database monitoring
+- Deployment guide for clustered and scheduled monitoring scenarios
 
 ### Changed
 
-- Operators support two modes: `:on_demand` (returns results) and `:continuous` (runs forever)
+- Operators now support two modes: on-demand (get results immediately) and continuous (run indefinitely)
 - Supervisor-started operators default to `:continuous` mode
 - Improved `Beamlens.Skill` module documentation
 - README uses consistent "operator" terminology
-- Renamed "domain" to "skill": `Beamlens.Domain` → `Beamlens.Skill`, `domain_module` → `skill`, `domain/0` → `id/0`
-- Renamed "watcher" to "operator": `Beamlens.Watcher` → `Beamlens.Operator`, `:watchers` → `:operators`
-- Renamed "alert" to "notification": `Alert` → `Notification`, `fire_alert` → `send_notification`, `alert_fired` → `notification_sent`
+- Renamed "domain" to "skill" throughout the API (modules, options, callbacks)
+- Renamed "watcher" to "operator" throughout the API (modules, options)
+- Renamed "alert" to "notification" throughout the API (structs, tools, telemetry events)
 - Think telemetry events include `thought` in metadata
 - Operators and coordinator can run indefinitely with compaction
-- BEAM skill callbacks prefixed: `get_memory` → `beam_get_memory`
-- Skill behaviour requires `callback_docs/0` callback
+- BEAM skill callbacks are now prefixed (e.g., `beam_get_memory`) to avoid naming collisions
+- Skills must now implement `callback_docs/0` (required callback)
 - Upgraded Puck to 0.2.7
 - Operators run as continuous loops instead of scheduled jobs
 - Operator LLM calls run asynchronously via `Task.async`

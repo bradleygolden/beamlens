@@ -11,6 +11,15 @@ defmodule Beamlens.Skill.BeamTest do
     end
   end
 
+  describe "title/0" do
+    test "returns a non-empty string" do
+      title = Beam.title()
+
+      assert is_binary(title)
+      assert String.length(title) > 0
+    end
+  end
+
   describe "description/0" do
     test "returns a non-empty string" do
       description = Beam.description()
@@ -180,13 +189,12 @@ defmodule Beamlens.Skill.BeamTest do
     test "process entries have expected fields" do
       result = Beam.callbacks()["beam_top_processes"].(1, "memory")
 
-      if result.showing > 0 do
-        [proc | _] = result.processes
-        assert Map.has_key?(proc, :pid)
-        assert Map.has_key?(proc, :memory_kb)
-        assert Map.has_key?(proc, :message_queue)
-        assert Map.has_key?(proc, :reductions)
-      end
+      assert result.showing > 0
+      [proc | _] = result.processes
+      assert Map.has_key?(proc, :pid)
+      assert Map.has_key?(proc, :memory_kb)
+      assert Map.has_key?(proc, :message_queue)
+      assert Map.has_key?(proc, :reductions)
     end
 
     test "supports sort_by memory" do

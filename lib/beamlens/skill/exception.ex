@@ -23,7 +23,7 @@ if Code.ensure_loaded?(Tower) do
 
     This skill captures exception messages and stacktraces which may contain
     sensitive data (file paths, variable values, etc.). Ensure your exception
-    handling does not expose PII before enabling this watcher.
+    handling does not expose PII before enabling this operator.
 
     All functions are read-only with zero side effects.
     """

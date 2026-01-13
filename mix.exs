@@ -87,6 +87,7 @@ defmodule Beamlens.MixProject do
         "GitHub" => @source_url,
         "Website" => "https://beamlens.dev"
       },
+      files: ~w(lib priv/baml_src .formatter.exs mix.exs README* LICENSE* CHANGELOG* docs),
       exclude_patterns: [~r/\.baml_optimize/, ~r/\.gitignore$/]
     ]
   end
@@ -141,15 +142,19 @@ defmodule Beamlens.MixProject do
           Beamlens.Operator.Supervisor,
           Beamlens.Operator.Notification,
           Beamlens.Operator.Snapshot,
-          Beamlens.Operator.Tools
+          Beamlens.Operator.Tools,
+          Beamlens.Operator.Status,
+          Beamlens.Operator.CompletionResult
         ],
         Coordinator: [
           Beamlens.Coordinator,
           Beamlens.Coordinator.Insight,
-          Beamlens.Coordinator.Tools
+          Beamlens.Coordinator.Tools,
+          Beamlens.Coordinator.Status
         ],
         Skill: [
           Beamlens.Skill,
+          Beamlens.Skill.Base,
           Beamlens.Skill.Beam,
           Beamlens.Skill.Ecto,
           Beamlens.Skill.Ecto.Local,
@@ -170,6 +175,9 @@ defmodule Beamlens.MixProject do
         Telemetry: [
           Beamlens.Telemetry,
           Beamlens.Telemetry.Hooks
+        ],
+        LLM: [
+          Beamlens.LLM.Utils
         ]
       ]
     ]
