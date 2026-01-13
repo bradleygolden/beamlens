@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Run operators on-demand and get results back immediately via `Beamlens.Operator.run/3`
+- Run operators on-demand and get results back immediately via `Beamlens.Operator.run/2`
 - Wait for on-demand operator results with configurable timeout via `Beamlens.Operator.await/2`
 - Pass trigger context (e.g., alert reason) to operators via `:context` option
 - On-demand operators signal when analysis is complete via the `done` tool
@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compaction telemetry events (`[:beamlens, :compaction, :start]`, `[:beamlens, :compaction, :stop]`)
 - Think tool for reasoning before actions
 - Coordinator agent that correlates notifications across operators into unified insights
-- `Beamlens.Coordinator.run/3` for one-shot coordinator analysis with operator invocation
+- `Beamlens.Coordinator.run/2` for one-shot coordinator analysis with operator invocation
+- `Beamlens.Coordinator.run/2` accepts `:skills` option to specify skills without pre-configuration
 - `Beamlens.Coordinator.status/1` — get coordinator running state and notification counts
 - Telemetry events for coordinator (`[:beamlens, :coordinator, *]`)
 - Autonomous operator system — LLM-driven loops that monitor domains and send notifications
@@ -52,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified `Coordinator.run` API: context is now first positional argument, options like `notifications` and `client_registry` passed as keyword list
+- Simplified `Operator.run` API: context is now second positional argument, `client_registry` moves to options keyword list
+- Ecto and Exception skills are now marked as experimental
 - Operators now support two modes: on-demand (get results immediately) and continuous (run indefinitely)
 - Supervisor-started operators default to `:continuous` mode
 - Improved `Beamlens.Skill` module documentation

@@ -74,9 +74,7 @@ The LLM controls timing via `wait()`. This is the default for supervised operato
 For scheduled or triggered analysis (e.g., Oban workers):
 
 ```elixir
-{:ok, notifications} = Beamlens.Operator.run(:beam, client_registry(),
-  context: %{reason: "high memory detected"}
-)
+{:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory detected"})
 ```
 
 The LLM investigates and calls `done()` when finished, returning notifications generated during analysis. Uses the `OperatorRun` BAML function which includes the `done` tool.

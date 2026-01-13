@@ -43,7 +43,7 @@ This requires two additional dependencies:
 
 ## Scheduled Monitoring with Oban
 
-If you prefer scheduled monitoring over continuous loops (useful for reducing LLM costs or running heavier analysis periodically), use `Operator.run/3` with Oban:
+If you prefer scheduled monitoring over continuous loops (useful for reducing LLM costs or running heavier analysis periodically), use `Operator.run/2` with Oban:
 
 ```elixir
 defmodule MyApp.BeamlensWorker do

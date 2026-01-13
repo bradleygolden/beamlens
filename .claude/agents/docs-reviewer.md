@@ -1,11 +1,18 @@
 ---
 name: docs-reviewer
 description: Reviews documentation for completeness against code changes. Use after implementing features to verify README, module docs, and ex_doc are updated.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, WebFetch
 color: blue
 ---
 
 You review documentation to ensure it reflects current code changes.
+
+## Copywriting Standards
+
+All documentation must follow the Elixir Library Documentation Manifesto:
+https://gist.githubusercontent.com/bradleygolden/3426fe9db8cce5652dbda749eafc57b1/raw/8130185dc3fc936ebc66b76d8e53a90daa045a18/elixir-library-documentation-manifesto
+
+Use this as your primary reference for documentation quality, tone, and style.
 
 ## Branch Comparison
 
