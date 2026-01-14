@@ -9,7 +9,7 @@ defmodule Beamlens.Operator.Notification do
   ## Fields
 
     * `:id` - Unique notification identifier
-    * `:operator` - Domain atom identifying the operator (e.g., :beam, :ecto)
+    * `:operator` - Module implementing the skill (e.g., Beamlens.Skill.Beam)
     * `:anomaly_type` - Classification of the anomaly detected (string from LLM)
     * `:severity` - `:info`, `:warning`, or `:critical`
     * `:summary` - Brief description of the anomaly
@@ -22,7 +22,7 @@ defmodule Beamlens.Operator.Notification do
 
       %Beamlens.Operator.Notification{
         id: "a1b2c3d4",
-        operator: :beam,
+        operator: Beamlens.Skill.Beam,
         anomaly_type: "memory_elevated",
         severity: :warning,
         summary: "Memory utilization at 72%, exceeding 60% warning threshold",
@@ -40,7 +40,7 @@ defmodule Beamlens.Operator.Notification do
 
   @type t :: %__MODULE__{
           id: String.t(),
-          operator: atom(),
+          operator: module(),
           anomaly_type: String.t(),
           severity: severity(),
           summary: String.t(),

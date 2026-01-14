@@ -5,12 +5,6 @@ defmodule Beamlens.Skill.EtsTest do
 
   alias Beamlens.Skill.Ets
 
-  describe "id/0" do
-    test "returns :ets" do
-      assert Ets.id() == :ets
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = Ets.title()

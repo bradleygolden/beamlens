@@ -10,9 +10,6 @@ defmodule Beamlens.Skill.Ports do
   @behaviour Beamlens.Skill
 
   @impl true
-  def id, do: :ports
-
-  @impl true
   def title, do: "Ports"
 
   @impl true
@@ -153,8 +150,6 @@ defmodule Beamlens.Skill.Ports do
 
   defp safe_port_info(port) do
     Port.info(port)
-  rescue
-    ArgumentError -> nil
   end
 
   defp resolve_port(port_id_string) do

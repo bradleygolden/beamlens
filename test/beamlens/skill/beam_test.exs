@@ -5,12 +5,6 @@ defmodule Beamlens.Skill.BeamTest do
 
   alias Beamlens.Skill.Beam
 
-  describe "id/0" do
-    test "returns :beam" do
-      assert Beam.id() == :beam
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = Beam.title()

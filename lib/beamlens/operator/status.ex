@@ -8,7 +8,7 @@ defmodule Beamlens.Operator.Status do
   defstruct [:operator, :state, :iteration, :running]
 
   @type t :: %__MODULE__{
-          operator: atom(),
+          operator: module(),
           state: :healthy | :observing | :warning | :critical,
           iteration: non_neg_integer(),
           running: boolean()

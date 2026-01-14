@@ -49,9 +49,6 @@ defmodule Beamlens.Skill.Ecto do
       @ecto_module ecto_module
 
       @impl true
-      def id, do: :ecto
-
-      @impl true
       def title do
         @ecto_module.title()
       end

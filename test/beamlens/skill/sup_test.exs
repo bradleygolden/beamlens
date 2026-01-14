@@ -5,12 +5,6 @@ defmodule Beamlens.Skill.SupTest do
 
   alias Beamlens.Skill.Sup
 
-  describe "id/0" do
-    test "returns :sup" do
-      assert Sup.id() == :sup
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = Sup.title()

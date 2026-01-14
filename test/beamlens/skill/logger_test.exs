@@ -11,12 +11,6 @@ defmodule Beamlens.Skill.LoggerTest do
     :ok
   end
 
-  describe "id/0" do
-    test "returns :logger" do
-      assert LoggerDomain.id() == :logger
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = LoggerDomain.title()

@@ -10,9 +10,6 @@ defmodule Beamlens.Skill.Sup do
   @behaviour Beamlens.Skill
 
   @impl true
-  def id, do: :sup
-
-  @impl true
   def title, do: "Supervisors"
 
   @impl true

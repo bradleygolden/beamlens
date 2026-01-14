@@ -27,9 +27,6 @@ defmodule Beamlens.Skill.System do
   @compile {:no_warn_undefined, [:cpu_sup, :memsup, :disksup]}
 
   @impl true
-  def id, do: :system
-
-  @impl true
   def title, do: "System Resources"
 
   @impl true

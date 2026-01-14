@@ -37,9 +37,6 @@ if Code.ensure_loaded?(Tower) do
     alias Beamlens.Skill.Exception.ExceptionStore
 
     @impl true
-    def id, do: :exception
-
-    @impl true
     def title, do: "Exceptions"
 
     @impl true

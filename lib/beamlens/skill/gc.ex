@@ -10,9 +10,6 @@ defmodule Beamlens.Skill.Gc do
   @behaviour Beamlens.Skill
 
   @impl true
-  def id, do: :gc
-
-  @impl true
   def title, do: "Garbage Collection"
 
   @impl true

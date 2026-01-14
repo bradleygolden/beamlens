@@ -5,12 +5,6 @@ defmodule Beamlens.Skill.GcTest do
 
   alias Beamlens.Skill.Gc
 
-  describe "id/0" do
-    test "returns :gc" do
-      assert Gc.id() == :gc
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = Gc.title()

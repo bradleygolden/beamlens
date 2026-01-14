@@ -20,12 +20,6 @@ defmodule Beamlens.Skill.EctoTest do
     :ok
   end
 
-  describe "id/0" do
-    test "returns :ecto" do
-      assert TestEctoDomain.id() == :ecto
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = TestEctoDomain.title()

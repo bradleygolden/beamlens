@@ -7,7 +7,6 @@ defmodule Beamlens.Skill do
 
   ## Required Callbacks
 
-  - `id/0` - Returns the skill identifier atom (e.g., `:beam`)
   - `title/0` - Returns a human-readable title for UI display (e.g., "BEAM VM")
   - `description/0` - Returns a brief (1-line) summary for the Coordinator
   - `system_prompt/0` - Returns the operator's identity and monitoring focus
@@ -15,22 +14,23 @@ defmodule Beamlens.Skill do
   - `callbacks/0` - Returns the Lua sandbox callback map for investigation
   - `callback_docs/0` - Returns markdown documentation for callbacks
 
+  The module itself is the skill identifier - no separate `id/0` callback needed.
+
   ## Configuration
 
   Register your custom skill in your application's config:
 
       config :beamlens,
         operators: [
-          :beam,  # built-in skill
-          [name: :redis, skill: MyApp.Skills.Redis]
+          Beamlens.Skill.Beam,  # built-in skill
+          MyApp.Skills.Redis    # custom skill
         ]
 
   Or start it dynamically:
 
-      Beamlens.Operator.Supervisor.start_operator([
-        name: :redis,
+      Beamlens.Operator.Supervisor.start_operator(
         skill: MyApp.Skills.Redis
-      ])
+      )
 
   ## Callback Naming Conventions
 
@@ -149,9 +149,6 @@ defmodule Beamlens.Skill do
         @behaviour Beamlens.Skill
 
         @impl true
-        def id, do: :redis
-
-        @impl true
         def title, do: "Redis Cache"
 
         @impl true
@@ -234,7 +231,6 @@ defmodule Beamlens.Skill do
       end
   """
 
-  @callback id() :: atom()
   @callback title() :: String.t()
   @callback description() :: String.t()
   @callback system_prompt() :: String.t()

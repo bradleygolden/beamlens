@@ -5,12 +5,6 @@ defmodule Beamlens.Skill.PortsTest do
 
   alias Beamlens.Skill.Ports
 
-  describe "id/0" do
-    test "returns :ports" do
-      assert Ports.id() == :ports
-    end
-  end
-
   describe "title/0" do
     test "returns a non-empty string" do
       title = Ports.title()

@@ -12,9 +12,6 @@ defmodule Beamlens.Skill.Beam do
   @behaviour Beamlens.Skill
 
   @impl true
-  def id, do: :beam
-
-  @impl true
   def title, do: "BEAM VM"
 
   @impl true

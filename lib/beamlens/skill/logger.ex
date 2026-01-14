@@ -26,9 +26,6 @@ defmodule Beamlens.Skill.Logger do
   alias Beamlens.Skill.Logger.LogStore
 
   @impl true
-  def id, do: :logger
-
-  @impl true
   def title, do: "Application Logs"
 
   @impl true

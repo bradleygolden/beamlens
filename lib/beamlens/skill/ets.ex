@@ -10,9 +10,6 @@ defmodule Beamlens.Skill.Ets do
   @behaviour Beamlens.Skill
 
   @impl true
-  def id, do: :ets
-
-  @impl true
   def title, do: "ETS Tables"
 
   @impl true
@@ -154,8 +151,6 @@ defmodule Beamlens.Skill.Ets do
       :undefined -> nil
       info -> info
     end
-  rescue
-    ArgumentError -> nil
   end
 
   defp resolve_table_ref(name_string) do
@@ -187,8 +182,6 @@ defmodule Beamlens.Skill.Ets do
 
   defp table_exists?(name) do
     :ets.info(name) != :undefined
-  rescue
-    ArgumentError -> false
   end
 
   defp format_table_name(name) when is_atom(name), do: Atom.to_string(name)
