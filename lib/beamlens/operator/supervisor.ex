@@ -2,16 +2,15 @@ defmodule Beamlens.Operator.Supervisor do
   @moduledoc """
   DynamicSupervisor for operator processes.
 
-  Starts and supervises operator processes based on configuration.
-  Each operator runs a continuous LLM-driven loop.
+  Supervises operator processes started via `start_operator/3`.
 
-  ## Configuration
+  ## Starting Operators
 
-      config :beamlens,
-        operators: [
-          :beam,
-          [name: :custom, skill: MyApp.Skill.Custom]
-        ]
+      {:ok, pid} = Beamlens.Operator.Supervisor.start_operator(:beam)
+
+      {:ok, pid} = Beamlens.Operator.Supervisor.start_operator(
+        [name: :custom, skill: MyApp.Skill.Custom]
+      )
 
   ## Operator Specifications
 
@@ -24,21 +23,10 @@ defmodule Beamlens.Operator.Supervisor do
 
     * `:name` - Required. Atom identifier for the operator
     * `:skill` - Required. Module implementing `Beamlens.Skill`
-    * `:mode` - `:continuous` or `:on_demand` (default: `:continuous`)
     * `:compaction_max_tokens` - Token threshold before compaction (default: 50,000)
     * `:compaction_keep_last` - Messages to keep after compaction (default: 5)
 
-  For one-shot analysis instead of continuous monitoring, use `Beamlens.Operator.run/2`.
-
-  ## Example with Compaction
-
-      config :beamlens,
-        operators: [
-          :beam,
-          [name: :ets, skill: Beamlens.Skill.Ets,
-           compaction_max_tokens: 100_000,
-           compaction_keep_last: 10]
-        ]
+  For one-shot analysis, use `Beamlens.Operator.run/2`.
   """
 
   use DynamicSupervisor
@@ -67,28 +55,6 @@ defmodule Beamlens.Operator.Supervisor do
   end
 
   @doc """
-  Starts all configured operators with the given options.
-
-  Called by the parent supervisor after OperatorSupervisor is started.
-  """
-  def start_operators_with_opts(supervisor \\ __MODULE__, operators, client_registry) do
-    Enum.each(operators, &start_operator(supervisor, &1, client_registry))
-  end
-
-  @doc """
-  Starts all configured operators.
-
-  Called after the supervisor is started to spawn operator processes.
-  """
-  def start_operators(supervisor \\ __MODULE__) do
-    operators = Application.get_env(:beamlens, :operators, [])
-
-    Enum.map(operators, fn spec ->
-      start_operator(supervisor, spec)
-    end)
-  end
-
-  @doc """
   Starts a single operator under the supervisor.
   """
   def start_operator(supervisor \\ __MODULE__, spec, client_registry \\ nil)
@@ -114,7 +80,6 @@ defmodule Beamlens.Operator.Supervisor do
     operator_opts =
       opts
       |> Keyword.drop([:name, :skill])
-      |> Keyword.put_new(:mode, :continuous)
       |> Keyword.merge(
         name: via_registry(name),
         skill: skill

@@ -45,7 +45,7 @@ defmodule Beamlens.Evals.OperatorTest do
       {_output, trajectory} =
         Puck.Eval.collect(
           fn ->
-            {:ok, pid} = Operator.start_link(skill: HealthySkill, mode: :continuous)
+            {:ok, pid} = Operator.start_link(skill: HealthySkill, start_loop: true)
             wait_for_wait_and_stop(pid)
             :ok
           end,

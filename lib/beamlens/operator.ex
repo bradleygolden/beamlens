@@ -2,12 +2,7 @@ defmodule Beamlens.Operator do
   @moduledoc """
   Operator for LLM-driven BEAM monitoring.
 
-  Provides two ways to run operators:
-
-  - **`run/2`** - On-demand analysis that returns when the LLM calls `done()`
-  - **GenServer** - Continuous monitoring that runs forever with `wait()` for pacing
-
-  ## On-Demand Analysis with `run/2`
+  ## Running Analysis with `run/2`
 
   For scheduled or triggered analysis (e.g., Oban workers):
 
@@ -20,20 +15,6 @@ defmodule Beamlens.Operator do
 
   The LLM investigates and calls `done()` when finished, returning the
   notifications generated during analysis.
-
-  ## Continuous Monitoring with GenServer
-
-  For always-on monitoring:
-
-      {:ok, pid} = Beamlens.Operator.start_link(
-        skill: Beamlens.Skill.Beam,
-        client_registry: registry
-      )
-
-  The LLM controls timing via `wait()`:
-  - Normal operation: wait(30000) -- 30 seconds
-  - Elevated concern: wait(5000) -- 5 seconds
-  - Critical monitoring: wait(1000) -- 1 second
 
   ## State Model
 
@@ -74,7 +55,6 @@ defmodule Beamlens.Operator do
     :client,
     :client_registry,
     :context,
-    :mode,
     :max_iterations,
     :caller,
     :pending_task,
@@ -91,18 +71,14 @@ defmodule Beamlens.Operator do
   @doc """
   Starts an operator process.
 
-  Defaults to `:on_demand` mode. For continuous monitoring, pass
-  `mode: :continuous`.
-
   ## Options
 
     * `:name` - Optional process name for registration
     * `:skill` - Required module implementing `Beamlens.Skill`
     * `:client_registry` - Optional LLM provider configuration map
-    * `:mode` - `:on_demand` or `:continuous` (default: `:on_demand`)
-    * `:start_loop` - Whether to start the LLM loop on init (default: `true` for `:continuous`, `false` for `:on_demand`)
+    * `:start_loop` - Whether to start the LLM loop on init (default: `false`)
     * `:context` - Map with context to pass to the LLM
-    * `:max_iterations` - Maximum LLM iterations before returning in on-demand mode (default: 10)
+    * `:max_iterations` - Maximum LLM iterations before returning (default: 10)
     * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
     * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
     * `:notify_pid` - PID to receive real-time notifications and completion messages
@@ -208,7 +184,6 @@ defmodule Beamlens.Operator do
         opts
         |> Keyword.put(:skill, skill_module)
         |> Keyword.put(:client_registry, client_registry)
-        |> Keyword.put(:mode, :on_demand)
         |> Keyword.put(:context, context)
 
       timeout = Keyword.get(opts, :timeout, :infinity)
@@ -221,9 +196,7 @@ defmodule Beamlens.Operator do
   end
 
   @doc """
-  Awaits completion for an on-demand operator.
-
-  Returns `{:error, :not_on_demand}` for continuous operators.
+  Awaits completion for an operator.
   """
   def await(server, timeout \\ :infinity) do
     GenServer.call(server, :await, timeout)
@@ -248,12 +221,11 @@ defmodule Beamlens.Operator do
     skill = Keyword.fetch!(opts, :skill)
     name = Keyword.get(opts, :name)
     client_registry = Keyword.get(opts, :client_registry)
-    mode = Keyword.get(opts, :mode, :on_demand)
-    max_iterations = max_iterations(mode, opts)
-    start_loop = Keyword.get(opts, :start_loop, mode == :continuous)
+    max_iterations = Keyword.get(opts, :max_iterations, 10)
+    start_loop = Keyword.get(opts, :start_loop, false)
     run_context = Keyword.get(opts, :context, %{})
     notify_pid = Keyword.get(opts, :notify_pid)
-    client = build_puck_client(skill, client_registry, mode, opts)
+    client = build_puck_client(skill, client_registry, opts)
 
     context =
       if map_size(run_context) > 0 do
@@ -269,7 +241,6 @@ defmodule Beamlens.Operator do
       client: client,
       client_registry: client_registry,
       context: context,
-      mode: mode,
       max_iterations: max_iterations,
       notify_pid: notify_pid,
       iteration: 0,
@@ -289,10 +260,10 @@ defmodule Beamlens.Operator do
   @impl true
   def handle_continue(
         :loop,
-        %{mode: :on_demand, iteration: iteration, max_iterations: max} = state
+        %{iteration: iteration, max_iterations: max} = state
       )
       when iteration >= max do
-    finish_on_demand(state, {:ok, state.notifications})
+    finish(state, {:ok, state.notifications})
   end
 
   def handle_continue(:loop, state) do
@@ -309,7 +280,7 @@ defmodule Beamlens.Operator do
 
     task =
       Task.async(fn ->
-        Puck.call(state.client, input, context, output_schema: Tools.schema(state.mode))
+        Puck.call(state.client, input, context, output_schema: Tools.schema())
       end)
 
     {:noreply, %{state | pending_task: task, pending_trace_id: trace_id}}
@@ -380,17 +351,12 @@ defmodule Beamlens.Operator do
     {:reply, result, state}
   end
 
-  @impl true
-  def handle_call(:await, _from, %{mode: :continuous} = state) do
-    {:reply, {:error, :not_on_demand}, state}
-  end
-
-  def handle_call(:await, _from, %{mode: :on_demand, caller: caller} = state)
+  def handle_call(:await, _from, %{caller: caller} = state)
       when not is_nil(caller) do
     {:reply, {:error, :already_waiting}, state}
   end
 
-  def handle_call(:await, from, %{mode: :on_demand, running: running} = state) do
+  def handle_call(:await, from, %{running: running} = state) do
     state = %{state | caller: from}
 
     if running do
@@ -433,10 +399,7 @@ defmodule Beamlens.Operator do
           llm_retry_count: 0
       }
 
-      case state.mode do
-        :on_demand -> finish_on_demand(state, {:error, {:llm_error, reason}})
-        :continuous -> {:noreply, state}
-      end
+      finish(state, {:error, {:llm_error, reason}})
     end
   end
 
@@ -637,15 +600,9 @@ defmodule Beamlens.Operator do
     {:noreply, new_state}
   end
 
-  defp handle_action(%Tools.Done{}, %{mode: :on_demand} = state, trace_id) do
-    emit_telemetry(:done, state, %{trace_id: trace_id})
-    finish_on_demand(state, {:ok, state.notifications})
-  end
-
   defp handle_action(%Tools.Done{}, state, trace_id) do
-    emit_telemetry(:unexpected_tool, state, %{trace_id: trace_id, tool: "done"})
-    new_state = %{state | iteration: state.iteration + 1, pending_trace_id: nil}
-    {:noreply, new_state, {:continue, :loop}}
+    emit_telemetry(:done, state, %{trace_id: trace_id})
+    finish(state, {:ok, state.notifications})
   end
 
   defp handle_action(%Think{thought: thought}, state, trace_id) do
@@ -697,13 +654,13 @@ defmodule Beamlens.Operator do
     end
   end
 
-  defp build_puck_client(skill, client_registry, mode, opts) do
+  defp build_puck_client(skill, client_registry, opts) do
     system_prompt = skill.system_prompt()
     callback_docs = skill.callback_docs() <> "\n" <> BaseSkill.callback_docs()
 
     backend_config =
       %{
-        function: baml_function(mode),
+        function: "OperatorRun",
         args_format: :auto,
         args: fn messages ->
           %{
@@ -759,12 +716,6 @@ defmodule Beamlens.Operator do
     Map.merge(BaseSkill.callbacks(), skill.callbacks())
   end
 
-  defp baml_function(:continuous), do: "OperatorLoop"
-  defp baml_function(:on_demand), do: "OperatorRun"
-
-  defp max_iterations(:on_demand, opts), do: Keyword.get(opts, :max_iterations, 10)
-  defp max_iterations(:continuous, _opts), do: nil
-
   defp message_response_schema do
     Zoi.object(%{
       summary: Zoi.string(),
@@ -773,7 +724,7 @@ defmodule Beamlens.Operator do
     })
   end
 
-  defp finish_on_demand(state, result) do
+  defp finish(state, result) do
     if state.notify_pid do
       completion_result = %CompletionResult{
         state: state.state,

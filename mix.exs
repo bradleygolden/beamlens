@@ -13,10 +13,10 @@ defmodule Beamlens.MixProject do
       deps: deps(),
       aliases: aliases(),
       dialyzer: dialyzer(),
-      description: "An AI agent that continuously monitors your Elixir application",
+      description: "Automated root cause analysis for BEAM applications.",
       package: package(),
       docs: docs(),
-      name: "BeamLens",
+      name: "beamlens",
       source_url: @source_url
     ]
   end
@@ -56,8 +56,6 @@ defmodule Beamlens.MixProject do
       {:telemetry, "~> 1.2"},
       {:ecto_psql_extras, "~> 0.8", optional: true},
       {:tower, "~> 0.8.6", optional: true},
-      {:highlander, "~> 0.2", optional: true},
-      {:phoenix_pubsub, "~> 2.1", optional: true},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
@@ -99,6 +97,7 @@ defmodule Beamlens.MixProject do
         "README.md",
         "docs/architecture.md",
         "docs/providers.md",
+        "docs/deployment.md",
         "CHANGELOG.md",
         "LICENSE"
       ],
@@ -134,8 +133,7 @@ defmodule Beamlens.MixProject do
       groups_for_modules: [
         Core: [
           Beamlens,
-          Beamlens.Supervisor,
-          Beamlens.NotificationForwarder
+          Beamlens.Supervisor
         ],
         Operator: [
           Beamlens.Operator,

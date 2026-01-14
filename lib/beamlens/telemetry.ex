@@ -1,6 +1,6 @@
 defmodule Beamlens.Telemetry do
   @moduledoc """
-  Telemetry events emitted by BeamLens.
+  Telemetry events emitted by beamlens.
 
   All events include a `trace_id` for correlating events within a single operator run.
   Events follow the standard `:start`, `:stop`, `:exception` lifecycle pattern
@@ -102,7 +102,7 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t(), thought: String.t()}`
 
-  * `[:beamlens, :operator, :done]` - Operator on-demand analysis completed
+  * `[:beamlens, :operator, :done]` - Operator analysis completed
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{operator: atom(), trace_id: String.t()}`
 
@@ -161,15 +161,7 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{running: boolean, notification_count: integer, message: String.t()}`
 
-  * `[:beamlens, :coordinator, :remote_notification_received]` - Notification received from another node via PubSub
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{notification_id: String.t(), operator: atom(), source_node: node()}`
-
-  * `[:beamlens, :coordinator, :takeover]` - Coordinator shutdown for Highlander takeover
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{notification_count: integer}`
-
-  * `[:beamlens, :coordinator, :invoke_operators]` - Coordinator invoked operators (on-demand mode)
+  * `[:beamlens, :coordinator, :invoke_operators]` - Coordinator invoked operators
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{trace_id: String.t(), skills: list(atom())}`
 
@@ -189,19 +181,15 @@ defmodule Beamlens.Telemetry do
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{trace_id: String.t()}`
 
-  * `[:beamlens, :coordinator, :pubsub_notification_received]` - Notification received from PubSub (clustered mode)
-    - Measurements: `%{system_time: integer}`
-    - Metadata: `%{notification_id: String.t(), operator: atom()}`
-
   * `[:beamlens, :coordinator, :operator_notification_received]` - Notification received from running operator
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{notification_id: String.t(), operator_pid: pid()}`
 
-  * `[:beamlens, :coordinator, :operator_complete]` - On-demand operator completed
+  * `[:beamlens, :coordinator, :operator_complete]` - Operator completed
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{skill: atom(), result: map()}`
 
-  * `[:beamlens, :coordinator, :operator_crashed]` - On-demand operator crashed
+  * `[:beamlens, :coordinator, :operator_crashed]` - Operator crashed
     - Measurements: `%{system_time: integer}`
     - Metadata: `%{skill: atom(), reason: term()}`
 
@@ -225,7 +213,7 @@ defmodule Beamlens.Telemetry do
         "beamlens-notifications",
         [:beamlens, :operator, :notification_sent],
         fn _event, _measurements, metadata, _config ->
-          Logger.warning("BeamLens notification: \#{metadata.notification.summary}")
+          Logger.warning("beamlens notification: \#{metadata.notification.summary}")
         end,
         nil
       )
@@ -278,14 +266,11 @@ defmodule Beamlens.Telemetry do
       [:beamlens, :coordinator, :loop_stopped],
       [:beamlens, :coordinator, :llm_error],
       [:beamlens, :coordinator, :unexpected_message],
-      [:beamlens, :coordinator, :remote_notification_received],
-      [:beamlens, :coordinator, :takeover],
       [:beamlens, :coordinator, :invoke_operators],
       [:beamlens, :coordinator, :message_operator],
       [:beamlens, :coordinator, :get_operator_statuses],
       [:beamlens, :coordinator, :wait],
       [:beamlens, :coordinator, :think],
-      [:beamlens, :coordinator, :pubsub_notification_received],
       [:beamlens, :coordinator, :operator_notification_received],
       [:beamlens, :coordinator, :operator_complete],
       [:beamlens, :coordinator, :operator_crashed],
@@ -380,7 +365,7 @@ defmodule Beamlens.Telemetry do
   end
 
   @doc """
-  Attaches a default logging handler to all BeamLens telemetry events.
+  Attaches a default logging handler to all beamlens telemetry events.
 
   ## Options
 

@@ -1,6 +1,6 @@
 defmodule Beamlens.Operator.Tools do
   @moduledoc """
-  Tool structs and union schema for the operator agent loop.
+  Tool structs and union schema for the operator agent.
 
   Tools:
   - SetState: Update operator state
@@ -12,7 +12,7 @@ defmodule Beamlens.Operator.Tools do
   - Execute: Run Lua code with metric callbacks
   - Wait: Sleep, then continue with fresh context
   - Think: Reason through complex decisions before acting
-  - Done: Signal analysis completion (on-demand only)
+  - Done: Signal analysis completion
   """
 
   defmodule SetState do
@@ -115,29 +115,8 @@ defmodule Beamlens.Operator.Tools do
   Returns a Zoi union schema for parsing operator tool responses.
 
   Uses discriminated union pattern matching on the `intent` field.
-
-  ## Modes
-
-  - `:continuous` (default) - Standard tools for continuous monitoring loop
-  - `:on_demand` - Includes `done` action for signaling analysis completion
   """
-  def schema(mode \\ :continuous)
-
-  def schema(:continuous) do
-    Zoi.union([
-      set_state_schema(),
-      send_notification_schema(),
-      get_notifications_schema(),
-      take_snapshot_schema(),
-      get_snapshot_schema(),
-      get_snapshots_schema(),
-      execute_schema(),
-      wait_schema(),
-      think_schema()
-    ])
-  end
-
-  def schema(:on_demand) do
+  def schema do
     Zoi.union([
       set_state_schema(),
       send_notification_schema(),

@@ -1,9 +1,7 @@
 // ============================================================================
 // OPERATOR AGENT TOOLS
 // ============================================================================
-// Agent tools for two execution modes:
-// - OperatorLoop: For GenServer continuous monitoring (runs forever with wait())
-// - OperatorRun: For run/2 one-shot analysis (runs until done() is called)
+// Agent tools for one-shot analysis via run/2 (runs until done() is called).
 //
 // Message class for conversation history
 class Message {
@@ -21,7 +19,7 @@ class Message {
 // - Execute: Run Lua code for investigation
 // - Wait: Sleep before next iteration
 // - Think: Reason through complex decisions
-// - Done: Signal analysis completion (OperatorRun only)
+// - Done: Signal analysis completion
 
 class SetState {
   intent "set_state"
@@ -138,51 +136,9 @@ template_string OperatorMessages(messages: Message[]) #"
 "#
 
 // ============================================================================
-// CONTINUOUS MODE
+// OPERATOR FUNCTION
 // ============================================================================
-// Runs forever with wait() for pacing between iterations
-
-function OperatorLoop(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | SendNotification | GetNotifications | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think {
-  client Default
-  prompt #"
-{{ _.role("system") }}
-{{ system_prompt }}
-
-## State Model
-You have a state that reflects your current assessment:
-- healthy: Everything is normal
-- observing: Something looks off, you're gathering more data
-- warning: Elevated concern, but not critical
-- critical: Active issue requiring immediate attention
-
-{{ OperatorToolDocs(callback_docs) }}
-
-### wait(ms)
-Sleep for the specified milliseconds, then continue.
-- Normal operation: wait(30000) -- 30 seconds
-- Elevated concern: wait(5000) -- 5 seconds
-- Critical monitoring: wait(1000) -- 1 second
-
-## Guidelines
-
-1. Start by calling take_snapshot() to capture current system metrics
-2. If metrics look normal, confirm with set_state(healthy, "reason") then wait
-3. If something looks off, take more snapshots and use execute() to investigate
-4. When sending notifications, include the snapshot IDs that show the problem
-5. Set appropriate wait times based on urgency
-
-{{ OperatorMessages(messages) }}
-
-What action do you want to take?
-
-{{ ctx.output_format }}
-"#
-}
-
-// ============================================================================
-// ONE-SHOT RUN MODE
-// ============================================================================
-// For run/2 - runs until LLM calls done() to signal completion
+// Runs until LLM calls done() to signal completion
 
 function OperatorRun(messages: Message[], system_prompt: string, callback_docs: string) -> SetState | SendNotification | GetNotifications | TakeSnapshot | GetSnapshot | GetSnapshots | Execute | Wait | Think | Done {
   client Default
@@ -230,8 +186,8 @@ What action do you want to take?
 // OPERATOR TESTS
 // ============================================================================
 
-test OperatorLoop_CallsTakeSnapshot {
-  functions [OperatorLoop]
+test OperatorRun_CallsTakeSnapshot {
+  functions [OperatorRun]
   args {
     messages [
       { role "user", content "Current state: healthy" }
@@ -254,8 +210,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   @@assert(calls_take_snapshot, {{ this.intent == "take_snapshot" }})
 }
 
-test OperatorLoop_HealthySnapshot {
-  functions [OperatorLoop]
+test OperatorRun_HealthySnapshot {
+  functions [OperatorRun]
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
@@ -277,8 +233,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-test OperatorLoop_HighProcessUtilization_Investigates {
-  functions [OperatorLoop]
+test OperatorRun_HighProcessUtilization_Investigates {
+  functions [OperatorRun]
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
@@ -302,8 +258,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-test OperatorLoop_CriticalAtomUtilization_Notifies {
-  functions [OperatorLoop]
+test OperatorRun_CriticalAtomUtilization_Notifies {
+  functions [OperatorRun]
   args {
     messages [
       { role "user", content #"Current state: warning"# },
@@ -327,8 +283,8 @@ Top N processes by "memory", "message_queue", or "reductions"
   }})
 }
 
-test OperatorLoop_SchedulerContention {
-  functions [OperatorLoop]
+test OperatorRun_SchedulerContention {
+  functions [OperatorRun]
   args {
     messages [
       { role "user", content #"Current state: healthy"# },
@@ -350,25 +306,6 @@ Top N processes by "memory", "message_queue", or "reductions"
     this.intent == "think" or
     (this.intent == "set_state" and this.state != "healthy")
   }})
-}
-
-// OperatorRun tests (for run/2)
-test OperatorRun_CallsTakeSnapshot {
-  functions [OperatorRun]
-  args {
-    messages [
-      { role "user", content #"Analyze: high memory usage detected"# }
-    ]
-    system_prompt "You are a BEAM VM health monitor."
-    callback_docs #"
-### beam_get_memory()
-Memory stats in MB: total_mb, processes_mb, system_mb, binary_mb, ets_mb, code_mb
-
-### beam_top_processes(limit, sort_by)
-Top N processes by "memory", "message_queue", or "reductions"
-"#
-  }
-  @@assert(calls_take_snapshot, {{ this.intent == "take_snapshot" }})
 }
 
 test OperatorRun_CallsDoneAfterAnalysis {

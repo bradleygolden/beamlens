@@ -12,29 +12,7 @@ defmodule Beamlens.Coordinator do
   - `:acknowledged` - Currently being analyzed
   - `:resolved` - Processed (correlated into insight or dismissed)
 
-  ## Single Node Example (Continuous Mode)
-
-      {:ok, pid} = Beamlens.Coordinator.start_link(
-        client_registry: %{...}
-      )
-
-  ## Clustered Example
-
-  When running in a cluster with PubSub, the Coordinator can receive notifications
-  from other nodes:
-
-      {:ok, pid} = Beamlens.Coordinator.start_link(
-        client_registry: %{...},
-        pubsub: MyApp.PubSub
-      )
-
-  In clustered mode, wrap with Highlander to ensure only one runs cluster-wide:
-
-      children = [
-        {Highlander, {Beamlens.Coordinator, client_registry: %{...}, pubsub: MyApp.PubSub}}
-      ]
-
-  ## On-Demand Mode
+  ## Running Analysis with `run/2`
 
   For one-shot analysis, use `run/2` which spawns a temporary coordinator,
   invokes operators as needed, and returns results:
@@ -66,8 +44,6 @@ defmodule Beamlens.Coordinator do
 
   alias Beamlens.Coordinator.Status
   alias Beamlens.LLM.Utils
-  alias Beamlens.NotificationForwarder
-  alias Beamlens.Operator.Notification
   alias Beamlens.Telemetry
   alias Puck.Context
 
@@ -77,9 +53,7 @@ defmodule Beamlens.Coordinator do
     :context,
     :pending_task,
     :pending_trace_id,
-    :pubsub,
     :caller,
-    mode: :continuous,
     max_iterations: 10,
     notifications: %{},
     iteration: 0,
@@ -96,7 +70,6 @@ defmodule Beamlens.Coordinator do
 
     * `:name` - Optional process name for registration (default: `__MODULE__`)
     * `:client_registry` - Optional LLM provider configuration map
-    * `:pubsub` - Phoenix.PubSub module for cross-node notifications (optional)
     * `:compaction_max_tokens` - Token threshold for compaction (default: 50_000)
     * `:compaction_keep_last` - Messages to keep verbatim after compaction (default: 5)
 
@@ -186,11 +159,11 @@ defmodule Beamlens.Coordinator do
 
     coordinator_opts =
       opts
-      |> Keyword.put(:mode, :on_demand)
       |> Keyword.put(:client_registry, client_registry)
       |> Keyword.put(:initial_notifications, notifications)
       |> Keyword.put(:context, context)
       |> Keyword.put(:skills, skills)
+      |> Keyword.put(:start_loop, true)
       |> Keyword.put_new(:name, nil)
 
     {:ok, pid} = start_link(coordinator_opts)
@@ -203,14 +176,11 @@ defmodule Beamlens.Coordinator do
   end
 
   @doc """
-  Blocks until an on-demand coordinator completes its analysis.
-
-  Only valid for coordinators started in `:on_demand` mode.
+  Blocks until the coordinator completes its analysis.
 
   ## Returns
 
     * `{:ok, result}` - Analysis completed
-    * `{:error, :not_on_demand}` - Coordinator is in continuous mode
     * `{:error, :already_awaiting}` - Another process is already awaiting
 
   """
@@ -221,13 +191,7 @@ defmodule Beamlens.Coordinator do
   @impl true
   def init(opts) do
     Process.flag(:trap_exit, true)
-    mode = Keyword.get(opts, :mode, :continuous)
-    client = build_puck_client(Keyword.get(opts, :client_registry), mode, opts)
-    pubsub = Keyword.get(opts, :pubsub)
-
-    if mode == :continuous and pubsub do
-      Phoenix.PubSub.subscribe(pubsub, NotificationForwarder.pubsub_topic())
-    end
+    client = build_puck_client(Keyword.get(opts, :client_registry), opts)
 
     initial_notifications =
       Keyword.get(opts, :initial_notifications, [])
@@ -235,53 +199,44 @@ defmodule Beamlens.Coordinator do
         Map.put(acc, notification.id, %{notification: notification, status: :unread})
       end)
 
+    initial_context = build_initial_context(Keyword.get(opts, :context))
+
+    start_loop = Keyword.get(opts, :start_loop, false)
+
     state = %__MODULE__{
       client: client,
       client_registry: Keyword.get(opts, :client_registry),
-      pubsub: pubsub,
-      mode: mode,
       max_iterations: Keyword.get(opts, :max_iterations, 10),
       notifications: initial_notifications,
-      context: Context.new()
+      context: initial_context,
+      running: start_loop
     }
 
     emit_telemetry(:started, state)
 
-    if mode == :on_demand do
-      {:ok, %{state | running: true}, {:continue, :loop}}
+    if start_loop do
+      {:ok, state, {:continue, :loop}}
     else
       {:ok, state}
     end
   end
 
   @impl true
-  def terminate(reason, %{pending_task: %Task{} = task} = state) do
+  def terminate(_reason, %{pending_task: %Task{} = task}) do
     Task.shutdown(task, :brutal_kill)
-    maybe_emit_takeover(reason, state)
+    :ok
   end
 
-  def terminate(reason, state) do
-    maybe_emit_takeover(reason, state)
-  end
-
-  defp maybe_emit_takeover(:shutdown, state) do
-    :telemetry.execute(
-      [:beamlens, :coordinator, :takeover],
-      %{system_time: System.system_time()},
-      %{notification_count: map_size(state.notifications)}
-    )
-  end
-
-  defp maybe_emit_takeover(_reason, _state), do: :ok
+  def terminate(_reason, _state), do: :ok
 
   @impl true
   def handle_continue(
         :loop,
-        %{mode: :on_demand, iteration: iteration, max_iterations: max} = state
+        %{iteration: iteration, max_iterations: max} = state
       )
       when iteration >= max do
     emit_telemetry(:max_iterations_reached, state, %{iteration: iteration})
-    finish_on_demand(state, :max_iterations)
+    finish(state)
   end
 
   def handle_continue(:loop, state) do
@@ -299,9 +254,7 @@ defmodule Beamlens.Coordinator do
 
     task =
       Task.async(fn ->
-        Puck.call(state.client, "Process notifications", context,
-          output_schema: Tools.schema(state.mode)
-        )
+        Puck.call(state.client, "Process notifications", context, output_schema: Tools.schema())
       end)
 
     {:noreply, %{state | pending_task: task, pending_trace_id: trace_id}}
@@ -314,7 +267,7 @@ defmodule Beamlens.Coordinator do
 
     case result do
       {:ok, response, new_context} ->
-        parsed = ensure_parsed(response.content, state.mode)
+        parsed = ensure_parsed(response.content)
         handle_action(parsed, %{state | context: new_context}, state.pending_trace_id)
 
       {:error, reason} ->
@@ -330,29 +283,6 @@ defmodule Beamlens.Coordinator do
     })
 
     {:noreply, %{state | pending_task: nil, pending_trace_id: nil, running: false}}
-  end
-
-  def handle_info({:beamlens_notification, %Notification{} = notification, source_node}, state) do
-    emit_telemetry(:pubsub_notification_received, state, %{
-      notification_id: notification.id,
-      operator: notification.operator,
-      source_node: source_node
-    })
-
-    new_notifications =
-      Map.put(state.notifications, notification.id, %{
-        notification: notification,
-        status: :unread
-      })
-
-    new_state = %{state | notifications: new_notifications}
-
-    if state.running do
-      {:noreply, new_state}
-    else
-      {:noreply, %{new_state | running: true, iteration: 0, context: Context.new()},
-       {:continue, :loop}}
-    end
   end
 
   def handle_info({:operator_notification, pid, notification}, state) do
@@ -372,7 +302,13 @@ defmodule Beamlens.Coordinator do
           operator_pid: pid
         })
 
-        {:noreply, %{state | notifications: new_notifications}}
+        new_state = %{state | notifications: new_notifications}
+
+        if state.running do
+          {:noreply, new_state}
+        else
+          {:noreply, %{new_state | running: true}, {:continue, :loop}}
+        end
     end
   end
 
@@ -448,15 +384,11 @@ defmodule Beamlens.Coordinator do
     {:reply, status, state}
   end
 
-  def handle_call(:await, _from, %{mode: :continuous} = state) do
-    {:reply, {:error, :not_on_demand}, state}
-  end
-
   def handle_call(:await, _from, %{caller: caller} = state) when caller != nil do
     {:reply, {:error, :already_awaiting}, state}
   end
 
-  def handle_call(:await, from, %{mode: :on_demand} = state) do
+  def handle_call(:await, from, state) do
     {:noreply, %{state | caller: from}}
   end
 
@@ -551,24 +483,12 @@ defmodule Beamlens.Coordinator do
     {:noreply, new_state, {:continue, :loop}}
   end
 
-  defp handle_action(%Done{}, %{mode: :on_demand} = state, trace_id) do
-    emit_telemetry(:done, state, %{trace_id: trace_id, mode: :on_demand})
-    finish_on_demand(state, :done)
-  end
-
   defp handle_action(%Done{}, state, trace_id) do
-    has_unread = Enum.any?(state.notifications, fn {_, %{status: s}} -> s == :unread end)
+    has_unread =
+      Enum.any?(state.notifications, fn {_id, %{status: status}} -> status == :unread end)
 
     emit_telemetry(:done, state, %{trace_id: trace_id, has_unread: has_unread})
-
-    if has_unread do
-      fresh_context = Context.new()
-
-      {:noreply, %{state | context: fresh_context, iteration: 0, pending_trace_id: nil},
-       {:continue, :loop}}
-    else
-      {:noreply, %{state | running: false, pending_trace_id: nil}}
-    end
+    finish(state)
   end
 
   defp handle_action(%Think{thought: thought}, state, trace_id) do
@@ -689,11 +609,11 @@ defmodule Beamlens.Coordinator do
     {:noreply, new_state}
   end
 
-  defp finish_on_demand(%{caller: nil} = state, _reason) do
-    {:stop, :normal, state}
+  defp finish(%{caller: nil} = state) do
+    {:noreply, %{state | running: false, pending_trace_id: nil}}
   end
 
-  defp finish_on_demand(state, _reason) do
+  defp finish(state) do
     result = %{
       insights: Enum.reverse(state.insights),
       operator_results: Enum.reverse(state.operator_results)
@@ -726,7 +646,7 @@ defmodule Beamlens.Coordinator do
           [
             skill: skill_module,
             client_registry: client_registry,
-            mode: :on_demand,
+            start_loop: true,
             notify_pid: self()
           ] ++ if(context, do: [context: %{reason: context}], else: [])
 
@@ -779,23 +699,29 @@ defmodule Beamlens.Coordinator do
     Enum.count(notifications, fn {_, %{status: s}} -> s == status end)
   end
 
-  defp ensure_parsed(%{__struct__: _} = struct, _mode), do: struct
+  defp ensure_parsed(%{__struct__: _} = struct), do: struct
 
-  defp ensure_parsed(map, mode) when is_map(map) do
-    {:ok, parsed} = Zoi.parse(Tools.schema(mode), map)
+  defp ensure_parsed(map) when is_map(map) do
+    {:ok, parsed} = Zoi.parse(Tools.schema(), map)
     parsed
   end
 
-  defp build_puck_client(client_registry, mode, opts) do
+  defp build_puck_client(client_registry, opts) do
     skills = Keyword.get(opts, :skills)
     operator_descriptions = build_operator_descriptions(skills)
-    function_name = baml_function(mode)
+    available_skills = build_available_skills(skills)
 
     backend_config =
       %{
-        function: function_name,
+        function: "CoordinatorRun",
         args_format: :auto,
-        args: build_args_fn(mode, operator_descriptions, skills),
+        args: fn messages ->
+          %{
+            messages: Utils.format_messages_for_baml(messages),
+            operator_descriptions: operator_descriptions,
+            available_skills: available_skills
+          }
+        end,
         path: Application.app_dir(:beamlens, "priv/baml_src")
       }
       |> Utils.maybe_add_client_registry(client_registry)
@@ -805,30 +731,6 @@ defmodule Beamlens.Coordinator do
       hooks: Beamlens.Telemetry.Hooks,
       auto_compaction: build_compaction_config(opts)
     )
-  end
-
-  defp baml_function(:continuous), do: "CoordinatorLoop"
-  defp baml_function(:on_demand), do: "CoordinatorRun"
-
-  defp build_args_fn(:continuous, operator_descriptions, _skills) do
-    fn messages ->
-      %{
-        messages: Utils.format_messages_for_baml(messages),
-        operator_descriptions: operator_descriptions
-      }
-    end
-  end
-
-  defp build_args_fn(:on_demand, operator_descriptions, skills) do
-    available_skills = build_available_skills(skills)
-
-    fn messages ->
-      %{
-        messages: Utils.format_messages_for_baml(messages),
-        operator_descriptions: operator_descriptions,
-        available_skills: available_skills
-      }
-    end
   end
 
   defp build_available_skills(nil) do
@@ -868,6 +770,31 @@ defmodule Beamlens.Coordinator do
     |> Enum.map(&Operator.Supervisor.resolve_skill/1)
     |> Enum.filter(&match?({:ok, _}, &1))
     |> Enum.map_join("\n", fn {:ok, {name, skill}} -> "- #{name}: #{skill.description()}" end)
+  end
+
+  defp build_initial_context(nil), do: Context.new()
+
+  defp build_initial_context(context) when is_map(context) and map_size(context) == 0,
+    do: Context.new()
+
+  defp build_initial_context(context) when is_map(context) do
+    message = format_initial_context_message(context)
+    ctx = Context.new()
+    %{ctx | messages: [Puck.Message.new(:user, message)]}
+  end
+
+  defp format_initial_context_message(context) do
+    parts =
+      Enum.flat_map(context, fn
+        {:reason, reason} when is_binary(reason) -> ["Reason: #{reason}"]
+        {key, value} when is_binary(value) -> ["#{key}: #{value}"]
+        _ -> []
+      end)
+
+    case parts do
+      [] -> "Analyze the system"
+      _ -> Enum.join(parts, "\n")
+    end
   end
 
   defp build_compaction_config(opts) do

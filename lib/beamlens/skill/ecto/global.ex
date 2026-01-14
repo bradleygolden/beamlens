@@ -18,16 +18,9 @@ defmodule Beamlens.Skill.Ecto.Global do
         use Beamlens.Skill.Ecto.Global, repo: MyApp.Repo
       end
 
-  ## Clustered Deployment (Recommended)
+  ## Singleton Deployment
 
-  Wrap in Highlander to run as a singleton across the cluster:
-
-      children = [
-        {Highlander,
-          {Beamlens.Operator, skill: MyApp.EctoGlobalSkill, client_registry: client_registry()}}
-      ]
-
-  Or use with Oban for scheduled monitoring:
+  Use Oban with unique jobs for scheduled singleton monitoring:
 
       defmodule MyApp.EctoGlobalWorker do
         use Oban.Worker, queue: :monitoring, unique: [period: 300]

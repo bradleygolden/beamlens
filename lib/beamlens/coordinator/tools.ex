@@ -1,17 +1,17 @@
 defmodule Beamlens.Coordinator.Tools do
   @moduledoc """
-  Tool structs and union schema for the coordinator agent loop.
+  Tool structs and union schema for the coordinator agent.
 
   Tools:
   - GetNotifications: Query notifications, optionally filtered by status
   - UpdateNotificationStatuses: Set status on multiple notifications
   - ProduceInsight: Emit insight + auto-resolve referenced notifications
-  - Done: End loop, wait for next notification
+  - Done: Signal analysis completion
   - Think: Reason through complex decisions before acting
-  - InvokeOperators: Spawn multiple operators in parallel (on-demand only)
-  - MessageOperator: Send message to running operator, get LLM response (on-demand only)
-  - GetOperatorStatuses: Check status of running operators (on-demand only)
-  - Wait: Pause loop for specified duration (on-demand only)
+  - InvokeOperators: Spawn multiple operators in parallel
+  - MessageOperator: Send message to running operator, get LLM response
+  - GetOperatorStatuses: Check status of running operators
+  - Wait: Pause loop for specified duration
   """
 
   defmodule GetNotifications do
@@ -117,25 +117,8 @@ defmodule Beamlens.Coordinator.Tools do
   Returns a Zoi union schema for parsing coordinator tool responses.
 
   Uses discriminated union pattern matching on the `intent` field.
-
-  ## Modes
-
-  - `:continuous` (default) - Standard tools for event-driven loop
-  - `:on_demand` - Includes `invoke_operator` for spawning operators
   """
-  def schema(mode \\ :continuous)
-
-  def schema(:continuous) do
-    Zoi.union([
-      get_notifications_schema(),
-      update_notification_statuses_schema(),
-      produce_insight_schema(),
-      done_schema(),
-      think_schema()
-    ])
-  end
-
-  def schema(:on_demand) do
+  def schema do
     Zoi.union([
       get_notifications_schema(),
       update_notification_statuses_schema(),

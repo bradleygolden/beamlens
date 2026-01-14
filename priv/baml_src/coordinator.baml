@@ -1,16 +1,14 @@
 // ============================================================================
 // COORDINATOR AGENT TOOLS
 // ============================================================================
-// Notification correlation agent with tools for both continuous and on-demand modes.
+// Notification correlation agent tools.
 //
-// Shared tools:
+// Tools:
 // - CoordinatorGetNotifications: Query notifications, optionally filtered by status
 // - CoordinatorUpdateNotificationStatuses: Set status on multiple notifications
 // - CoordinatorProduceInsight: Emit insight + auto-resolve referenced notifications
-// - CoordinatorDone: End loop, wait for next notification
+// - CoordinatorDone: Signal analysis completion
 // - CoordinatorThink: Reason through complex decisions before acting
-//
-// On-demand mode adds:
 // - CoordinatorInvokeOperators: Spawn multiple operators in parallel
 // - CoordinatorMessageOperator: Send message to running operator, get LLM response
 // - CoordinatorGetOperatorStatuses: Check status of running operators
@@ -69,84 +67,16 @@ class CoordinatorWait {
   ms int @description("Milliseconds to wait before continuing")
 }
 
-function CoordinatorLoop(messages: Message[], operator_descriptions: string) -> CoordinatorGetNotifications | CoordinatorUpdateNotificationStatuses | CoordinatorProduceInsight | CoordinatorDone | CoordinatorThink {
-  client Default
-  prompt #"
-{{ _.role("system") }}
-You are a notification correlation agent. You receive notifications from system operators
-and identify patterns across them.
-
-## Active Operators
-
-{{ operator_descriptions }}
-
-## Notification States
-- unread: New notifications, not yet processed
-- acknowledged: You're currently analyzing these
-- resolved: Processed (correlated into insight or dismissed)
-
-## Available Tools
-
-### get_notifications(status?)
-Query notifications. Filter by status or get all.
-
-### update_notification_statuses(notification_ids, status, reason?)
-Update status on multiple notifications.
-- acknowledged: You're currently analyzing these
-- resolved: Done processing (use for unrelated/false positives without insight)
-
-### produce_insight(notification_ids, correlation_type, summary, root_cause_hypothesis?, confidence)
-Create insight correlating notifications. Auto-resolves the referenced notifications.
-- temporal: Notifications occurred close in time, possibly related
-- causal: One notification directly caused another (A -> B)
-- symptomatic: Notifications share a common hidden cause (A <- X -> B)
-
-### done()
-End processing. Call when finished with current notifications.
-
-### think(thought)
-Use this to reason through complex decisions before acting. Your thought
-will be recorded but no action is taken. Good for:
-- Analyzing notification patterns before correlating
-- Working through ambiguous relationships
-- Planning correlation strategy
-
-## Guidelines
-1. Start by getting unread notifications
-2. Mark notifications as acknowledged before analyzing
-3. Look for patterns: same operator, timing, related domains
-4. Memory issues often cascade to scheduler/process problems
-5. Produce insight for correlated notifications
-6. Mark unrelated notifications as resolved (no insight needed)
-7. Call done when finished
-
-## Notification Age Considerations
-- Pay attention to notification detected_at timestamps relative to current time
-- Consider whether notifications are still relevant based on their age
-- When correlating, prefer notifications with similar timestamps
-
-{% for message in messages %}
-{{ _.role(message.role) }}
-{{ message.content }}
-{% endfor %}
-
-What action do you want to take?
-
-{{ ctx.output_format }}
-"#
-}
-
 // ============================================================================
-// ON-DEMAND MODE
+// COORDINATOR FUNCTION
 // ============================================================================
-// For run/2 - runs until LLM calls done() to signal completion.
-// Includes tools for spawning operators, messaging them, and checking status.
+// Runs until LLM calls done() to signal completion.
 
 function CoordinatorRun(messages: Message[], operator_descriptions: string, available_skills: string) -> CoordinatorGetNotifications | CoordinatorUpdateNotificationStatuses | CoordinatorProduceInsight | CoordinatorDone | CoordinatorThink | CoordinatorInvokeOperators | CoordinatorMessageOperator | CoordinatorGetOperatorStatuses | CoordinatorWait {
   client Default
   prompt #"
 {{ _.role("system") }}
-You are a notification correlation agent running in on-demand mode. You analyze notifications
+You are a notification correlation agent. You analyze notifications
 from system operators and can spawn operators to gather fresh data when needed.
 
 ## Active Operators
@@ -234,43 +164,46 @@ What action do you want to take?
 // COORDINATOR TESTS
 // ============================================================================
 
-test CoordinatorLoop_GetsNotificationsFirst {
-  functions [CoordinatorLoop]
+test CoordinatorRun_GetsNotificationsFirst {
+  functions [CoordinatorRun]
   args {
     messages [
       { role "user", content "Process notifications" }
     ]
     operator_descriptions "- beam: BEAM VM health: memory, processes, schedulers, atoms"
+    available_skills "beam"
   }
   @@assert(gets_notifications, {{ this.intent == "get_notifications" }})
 }
 
-test CoordinatorLoop_AcknowledgesUnreadNotifications {
-  functions [CoordinatorLoop]
+test CoordinatorRun_AcknowledgesUnreadNotifications {
+  functions [CoordinatorRun]
   args {
     messages [
       { role "user", content "Process notifications" },
       { role "user", content #"[{"id":"a1","status":"unread","operator":"beam","anomaly_type":"memory_elevated","severity":"warning","summary":"Memory at 78%","detected_at":"2024-01-06T10:30:00Z"},{"id":"a2","status":"unread","operator":"beam","anomaly_type":"scheduler_contention","severity":"warning","summary":"Run queue at 45","detected_at":"2024-01-06T10:30:30Z"}]"# }
     ]
     operator_descriptions "- beam: BEAM VM health: memory, processes, schedulers, atoms"
+    available_skills "beam"
   }
   @@assert(acknowledges_first, {{ (this.intent == "update_notification_statuses" and this.status == "acknowledged") or this.intent == "think" }})
 }
 
-test CoordinatorLoop_ResolvesFalsePositive {
-  functions [CoordinatorLoop]
+test CoordinatorRun_ResolvesFalsePositive {
+  functions [CoordinatorRun]
   args {
     messages [
       { role "user", content "Process notifications" },
       { role "user", content #"[{"id":"a1","status":"acknowledged","operator":"beam","anomaly_type":"memory_elevated","severity":"info","summary":"Brief memory spike, returned to normal - no action needed","detected_at":"2024-01-06T10:30:00Z"}]"# }
     ]
     operator_descriptions "- beam: BEAM VM health: memory, processes, schedulers, atoms"
+    available_skills "beam"
   }
   @@assert(resolves_false_positive, {{ (this.intent == "update_notification_statuses" and this.status == "resolved") or this.intent == "think" }})
 }
 
-test CoordinatorLoop_CompletesWhenDone {
-  functions [CoordinatorLoop]
+test CoordinatorRun_CompletesWhenDone {
+  functions [CoordinatorRun]
   args {
     messages [
       { role "user", content "Process notifications" },
@@ -278,11 +211,11 @@ test CoordinatorLoop_CompletesWhenDone {
       { role "user", content "No unread notifications found: []" }
     ]
     operator_descriptions "- beam: BEAM VM health: memory, processes, schedulers, atoms"
+    available_skills "beam"
   }
   @@assert(calls_done, {{ this.intent == "done" or this.intent == "think" }})
 }
 
-// CoordinatorRun tests (on-demand mode)
 test CoordinatorRun_InvokesOperatorsForFreshData {
   functions [CoordinatorRun]
   args {

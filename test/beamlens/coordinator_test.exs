@@ -74,11 +74,6 @@ defmodule Beamlens.CoordinatorTest do
     send(coordinator_pid, {:operator_notification, fake_operator_pid, notification})
   end
 
-  defp simulate_pubsub_notification(coordinator_pid, notification) do
-    # Simulate a notification arriving via PubSub (continuous mode)
-    send(coordinator_pid, {:beamlens_notification, notification, node()})
-  end
-
   defp extract_content_text(content) when is_binary(content), do: content
 
   defp extract_content_text(content) when is_list(content) do
@@ -240,7 +235,7 @@ defmodule Beamlens.CoordinatorTest do
       stop_coordinator(pid)
     end
 
-    test "first notification triggers loop start via pubsub" do
+    test "first notification triggers loop start" do
       ref = make_ref()
       parent = self()
 
@@ -256,7 +251,7 @@ defmodule Beamlens.CoordinatorTest do
       {:ok, pid} = start_coordinator()
 
       notification = build_test_notification()
-      simulate_pubsub_notification(pid, notification)
+      simulate_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 1000
 
@@ -680,7 +675,7 @@ defmodule Beamlens.CoordinatorTest do
       {:ok, pid} = start_coordinator()
 
       notification = build_test_notification()
-      simulate_pubsub_notification(pid, notification)
+      simulate_notification(pid, notification)
 
       assert_receive {:telemetry, :iteration_start, %{iteration: 0, trace_id: _}}, 1000
 
@@ -842,198 +837,6 @@ defmodule Beamlens.CoordinatorTest do
     end
   end
 
-  describe "pubsub integration" do
-    setup do
-      pubsub_name = :"TestPubSub_#{:erlang.unique_integer([:positive])}"
-      {:ok, _} = start_supervised({Phoenix.PubSub, name: pubsub_name})
-      %{pubsub: pubsub_name}
-    end
-
-    test "stores pubsub in state when provided", %{pubsub: pubsub} do
-      name = :"coordinator_pubsub_#{:erlang.unique_integer([:positive])}"
-      {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
-
-      :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client()}
-      end)
-
-      state = :sys.get_state(pid)
-      assert state.pubsub == pubsub
-
-      stop_coordinator(pid)
-    end
-
-    test "subscribes to pubsub topic on init", %{pubsub: pubsub} do
-      name = :"coordinator_pubsub_sub_#{:erlang.unique_integer([:positive])}"
-      {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
-
-      :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client()}
-      end)
-
-      notification = build_test_notification()
-
-      Phoenix.PubSub.broadcast(
-        pubsub,
-        "beamlens:notifications",
-        {:beamlens_notification, notification, :other@node}
-      )
-
-      state = :sys.get_state(pid)
-      assert Map.has_key?(state.notifications, notification.id)
-
-      stop_coordinator(pid)
-    end
-
-    test "accepts notifications from local node via pubsub", %{pubsub: pubsub} do
-      name = :"coordinator_pubsub_local_#{:erlang.unique_integer([:positive])}"
-      {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
-
-      :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client(), running: true}
-      end)
-
-      notification = build_test_notification()
-
-      Phoenix.PubSub.broadcast(
-        pubsub,
-        "beamlens:notifications",
-        {:beamlens_notification, notification, node()}
-      )
-
-      state = :sys.get_state(pid)
-      assert Map.has_key?(state.notifications, notification.id)
-
-      stop_coordinator(pid)
-    end
-
-    test "emits pubsub_notification_received telemetry for cross-node notifications", %{
-      pubsub: pubsub
-    } do
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        {ref, :pubsub_notification},
-        [:beamlens, :coordinator, :pubsub_notification_received],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :pubsub_notification_received, metadata})
-        end,
-        nil
-      )
-
-      name = :"coordinator_pubsub_tel_#{:erlang.unique_integer([:positive])}"
-      {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
-
-      :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client()}
-      end)
-
-      notification = build_test_notification()
-
-      Phoenix.PubSub.broadcast(
-        pubsub,
-        "beamlens:notifications",
-        {:beamlens_notification, notification, :other@node}
-      )
-
-      assert_receive {:telemetry, :pubsub_notification_received,
-                      %{notification_id: _, operator: :test, source_node: :other@node}},
-                     1000
-
-      stop_coordinator(pid)
-      :telemetry.detach({ref, :pubsub_notification})
-    end
-
-    test "starts loop when receiving first remote notification", %{pubsub: pubsub} do
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        {ref, :iteration_start},
-        [:beamlens, :coordinator, :iteration_start],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :iteration_start, metadata})
-        end,
-        nil
-      )
-
-      name = :"coordinator_pubsub_loop_#{:erlang.unique_integer([:positive])}"
-      {:ok, pid} = Coordinator.start_link(name: name, pubsub: pubsub)
-
-      :sys.replace_state(pid, fn state ->
-        %{state | client: mock_client()}
-      end)
-
-      notification = build_test_notification()
-
-      Phoenix.PubSub.broadcast(
-        pubsub,
-        "beamlens:notifications",
-        {:beamlens_notification, notification, :other@node}
-      )
-
-      assert_receive {:telemetry, :iteration_start, %{iteration: 0}}, 1000
-
-      stop_coordinator(pid)
-      :telemetry.detach({ref, :iteration_start})
-    end
-  end
-
-  describe "takeover telemetry" do
-    test "emits takeover event on :shutdown termination" do
-      Process.flag(:trap_exit, true)
-
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        {ref, :takeover},
-        [:beamlens, :coordinator, :takeover],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :takeover, metadata})
-        end,
-        nil
-      )
-
-      {:ok, pid} = start_coordinator()
-
-      notification = build_test_notification()
-
-      :sys.replace_state(pid, fn state ->
-        notifications = %{notification.id => %{notification: notification, status: :unread}}
-        %{state | notifications: notifications}
-      end)
-
-      GenServer.stop(pid, :shutdown)
-
-      assert_receive {:telemetry, :takeover, %{notification_count: 1}}, 1000
-
-      :telemetry.detach({ref, :takeover})
-    end
-
-    test "does not emit takeover event on normal termination" do
-      ref = make_ref()
-      parent = self()
-
-      :telemetry.attach(
-        {ref, :takeover},
-        [:beamlens, :coordinator, :takeover],
-        fn _event, _measurements, metadata, _ ->
-          send(parent, {:telemetry, :takeover, metadata})
-        end,
-        nil
-      )
-
-      {:ok, pid} = start_coordinator()
-      GenServer.stop(pid, :normal)
-
-      refute_receive {:telemetry, :takeover, _}, 100
-
-      :telemetry.detach({ref, :takeover})
-    end
-  end
-
   describe "handle_action - InvokeOperators" do
     setup do
       :persistent_term.put({Beamlens.Supervisor, :operators}, [:beam, :ets, :gc])
@@ -1056,7 +859,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1075,7 +878,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "adds result to context with started skills count" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1098,7 +901,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "increments iteration after processing" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1130,7 +933,7 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "handle_action - MessageOperator" do
     test "returns error when operator not running" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1165,7 +968,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1184,7 +987,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "increments iteration after processing" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1205,7 +1008,7 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "handle_action - GetOperatorStatuses" do
     test "returns empty list when no operators running" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1227,7 +1030,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "handles dead operator PIDs gracefully" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       dead_pid = spawn(fn -> :ok end)
 
@@ -1275,7 +1078,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1294,7 +1097,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "increments iteration after processing" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1315,7 +1118,7 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "handle_action - Wait" do
     test "schedules continue_after_wait message" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1350,7 +1153,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1369,7 +1172,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "increments iteration after processing" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       task = Task.async(fn -> :ok end)
       Task.await(task)
@@ -1390,7 +1193,7 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "operator crash handling" do
     test "coordinator handles DOWN and removes operator from running_operators" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1415,7 +1218,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "coordinator handles EXIT and removes operator from running_operators" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1452,7 +1255,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1489,7 +1292,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1514,7 +1317,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "coordinator continues running after operator crash" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1541,7 +1344,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "multiple operator crashes handled independently" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid1 = spawn(fn -> :ok end)
       operator_ref1 = make_ref()
@@ -1580,7 +1383,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "ignores DOWN from unknown refs" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       unknown_pid = spawn(fn -> :ok end)
       unknown_ref = make_ref()
@@ -1596,7 +1399,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "ignores EXIT from unknown pids" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       unknown_pid = spawn(fn -> :ok end)
 
@@ -1615,7 +1418,7 @@ defmodule Beamlens.CoordinatorTest do
     test "linked operators die when coordinator dies" do
       Process.flag(:trap_exit, true)
 
-      {:ok, coordinator_pid} = start_coordinator(mode: :on_demand)
+      {:ok, coordinator_pid} = start_coordinator()
 
       operator_pid =
         spawn(fn ->
@@ -1704,7 +1507,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "start_link accepts skills option" do
-      {:ok, pid} = start_coordinator(mode: :on_demand, skills: [:beam, :ets])
+      {:ok, pid} = start_coordinator(skills: [:beam, :ets])
 
       assert Process.alive?(pid)
 
@@ -1712,7 +1515,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "start_link works without skills option" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       assert Process.alive?(pid)
 
@@ -1722,7 +1525,7 @@ defmodule Beamlens.CoordinatorTest do
 
   describe "operator completion flow" do
     test "operator_complete message merges notifications" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1755,7 +1558,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "operator_complete adds result to operator_results" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1786,7 +1589,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "operator removed from running_operators on completion" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1825,7 +1628,7 @@ defmodule Beamlens.CoordinatorTest do
         nil
       )
 
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       operator_pid = spawn(fn -> :ok end)
       operator_ref = make_ref()
@@ -1852,7 +1655,7 @@ defmodule Beamlens.CoordinatorTest do
     end
 
     test "ignores completion from unknown operator PIDs" do
-      {:ok, pid} = start_coordinator(mode: :on_demand)
+      {:ok, pid} = start_coordinator()
 
       unknown_pid = spawn(fn -> :ok end)
       result = %{summary: "Test result", notifications: []}

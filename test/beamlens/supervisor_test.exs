@@ -13,18 +13,18 @@ defmodule Beamlens.SupervisorTest do
   end
 
   describe "quick start pattern" do
-    test "starts with on_demand operators that can be listed" do
+    test "lists configured operators" do
       {:ok, _supervisor} =
         start_supervised(
           {Beamlens,
            operators: [
-             [name: :beam, skill: Beamlens.Skill.Beam, mode: :on_demand],
-             [name: :ets, skill: Beamlens.Skill.Ets, mode: :on_demand],
-             [name: :system, skill: Beamlens.Skill.System, mode: :on_demand]
+             [name: :beam, skill: Beamlens.Skill.Beam],
+             [name: :ets, skill: Beamlens.Skill.Ets],
+             [name: :system, skill: Beamlens.Skill.System]
            ]}
         )
 
-      # Verify operators are listed correctly as shown in Quick Start
+      # Verify operators are listed correctly
       operators = Beamlens.list_operators()
 
       assert length(operators) == 3
@@ -35,9 +35,9 @@ defmodule Beamlens.SupervisorTest do
       assert :ets in names
       assert :system in names
 
-      # Verify each operator has expected structure
+      # Verify each operator has expected structure (stopped until manually started)
       beam_op = Enum.find(operators, &(&1.name == :beam))
-      assert beam_op.state == :healthy
+      assert beam_op.state == :stopped
       assert beam_op.title == "BEAM VM"
     end
 
@@ -46,7 +46,7 @@ defmodule Beamlens.SupervisorTest do
         start_supervised(
           {Beamlens,
            operators: [
-             [name: :beam, skill: Beamlens.Skill.Beam, mode: :on_demand]
+             [name: :beam, skill: Beamlens.Skill.Beam]
            ]}
         )
 

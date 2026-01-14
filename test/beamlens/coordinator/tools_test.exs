@@ -6,9 +6,13 @@ defmodule Beamlens.Coordinator.ToolsTest do
   alias Beamlens.Coordinator.Tools.{
     Done,
     GetNotifications,
+    GetOperatorStatuses,
+    InvokeOperators,
+    MessageOperator,
     ProduceInsight,
     Think,
-    UpdateNotificationStatuses
+    UpdateNotificationStatuses,
+    Wait
   }
 
   describe "schema/0 - GetNotifications" do
@@ -199,6 +203,71 @@ defmodule Beamlens.Coordinator.ToolsTest do
       assert {:ok, result} = Zoi.parse(schema, input)
       assert %Think{} = result
       assert result.thought == "These notifications seem related..."
+    end
+  end
+
+  describe "schema/0 - InvokeOperators" do
+    test "parses invoke_operators with skills" do
+      schema = Tools.schema()
+      input = %{intent: "invoke_operators", skills: ["beam", "ets"]}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %InvokeOperators{} = result
+      assert result.skills == ["beam", "ets"]
+      assert result.context == nil
+    end
+
+    test "parses invoke_operators with optional context" do
+      schema = Tools.schema()
+
+      input = %{
+        intent: "invoke_operators",
+        skills: ["beam"],
+        context: "High memory usage detected"
+      }
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %InvokeOperators{} = result
+      assert result.skills == ["beam"]
+      assert result.context == "High memory usage detected"
+    end
+  end
+
+  describe "schema/0 - MessageOperator" do
+    test "parses message_operator" do
+      schema = Tools.schema()
+
+      input = %{
+        intent: "message_operator",
+        skill: "beam",
+        message: "What is the current memory usage?"
+      }
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %MessageOperator{} = result
+      assert result.skill == "beam"
+      assert result.message == "What is the current memory usage?"
+    end
+  end
+
+  describe "schema/0 - GetOperatorStatuses" do
+    test "parses get_operator_statuses" do
+      schema = Tools.schema()
+      input = %{intent: "get_operator_statuses"}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %GetOperatorStatuses{} = result
+    end
+  end
+
+  describe "schema/0 - Wait" do
+    test "parses wait with milliseconds" do
+      schema = Tools.schema()
+      input = %{intent: "wait", ms: 5000}
+
+      assert {:ok, result} = Zoi.parse(schema, input)
+      assert %Wait{} = result
+      assert result.ms == 5000
     end
   end
 

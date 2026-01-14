@@ -97,16 +97,6 @@ defmodule Beamlens.OperatorTest do
     end
   end
 
-  describe "await/2" do
-    test "returns error for continuous operators" do
-      {:ok, pid} = start_operator_without_loop(mode: :continuous)
-
-      assert {:error, :not_on_demand} == Operator.await(pid)
-
-      Operator.stop(pid)
-    end
-  end
-
   describe "initial state" do
     test "starts in healthy state" do
       {:ok, pid} = start_operator_without_loop()
@@ -425,24 +415,12 @@ defmodule Beamlens.OperatorTest do
   describe "tool schemas" do
     alias Beamlens.Operator.Tools
 
-    test "on_demand mode schema includes Done tool" do
-      schema = Tools.schema(:on_demand)
+    test "schema includes Done tool" do
+      schema = Tools.schema()
       assert schema != nil
 
       {:ok, result} = Zoi.parse(schema, %{intent: "done"})
       assert %Tools.Done{intent: "done"} = result
-    end
-
-    test "continuous mode schema excludes Done tool" do
-      schema = Tools.schema(:continuous)
-
-      {:error, _} = Zoi.parse(schema, %{intent: "done"})
-    end
-
-    test "schema/0 defaults to continuous mode" do
-      schema = Tools.schema()
-
-      {:error, _} = Zoi.parse(schema, %{intent: "done"})
     end
   end
 
@@ -461,44 +439,6 @@ defmodule Beamlens.OperatorTest do
 
       state = :sys.get_state(pid)
       assert state.notify_pid == nil
-
-      Operator.stop(pid)
-    end
-  end
-
-  describe "mode defaults" do
-    test "on_demand mode defaults to start_loop: false" do
-      {:ok, pid} = Operator.start_link(skill: TestSkill, mode: :on_demand)
-
-      state = :sys.get_state(pid)
-      assert state.running == false
-
-      Operator.stop(pid)
-    end
-
-    test "continuous mode defaults to start_loop: true" do
-      {:ok, pid} = Operator.start_link(skill: TestSkill, mode: :continuous)
-
-      state = :sys.get_state(pid)
-      assert state.running == true
-
-      Operator.stop(pid)
-    end
-
-    test "on_demand mode defaults max_iterations to 10" do
-      {:ok, pid} = start_operator_without_loop(mode: :on_demand)
-
-      state = :sys.get_state(pid)
-      assert state.max_iterations == 10
-
-      Operator.stop(pid)
-    end
-
-    test "continuous mode has nil max_iterations" do
-      {:ok, pid} = start_operator_without_loop(mode: :continuous)
-
-      state = :sys.get_state(pid)
-      assert state.max_iterations == nil
 
       Operator.stop(pid)
     end

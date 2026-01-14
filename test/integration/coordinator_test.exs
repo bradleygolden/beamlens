@@ -33,7 +33,22 @@ defmodule Beamlens.Integration.CoordinatorTest do
   end
 
   defp inject_notification(pid, notification) do
-    send(pid, {:beamlens_notification, notification, node()})
+    # Simulate an operator sending a notification
+    fake_operator_pid = self()
+
+    :sys.replace_state(pid, fn state ->
+      %{
+        state
+        | running_operators:
+            Map.put(state.running_operators, fake_operator_pid, %{
+              skill: notification.operator,
+              ref: make_ref(),
+              started_at: DateTime.utc_now()
+            })
+      }
+    end)
+
+    send(pid, {:operator_notification, fake_operator_pid, notification})
     notification
   end
 
@@ -162,7 +177,7 @@ defmodule Beamlens.Integration.CoordinatorTest do
       parent = self()
 
       events = [
-        [:beamlens, :coordinator, :pubsub_notification_received],
+        [:beamlens, :coordinator, :operator_notification_received],
         [:beamlens, :coordinator, :iteration_start]
       ]
 
@@ -203,13 +218,13 @@ defmodule Beamlens.Integration.CoordinatorTest do
 
       inject_notification(pid, notification1)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :pubsub_notification_received],
+      assert_receive {:telemetry, [:beamlens, :coordinator, :operator_notification_received],
                       %{notification_id: _}},
                      5_000
 
       inject_notification(pid, notification2)
 
-      assert_receive {:telemetry, [:beamlens, :coordinator, :pubsub_notification_received],
+      assert_receive {:telemetry, [:beamlens, :coordinator, :operator_notification_received],
                       %{notification_id: _}},
                      5_000
 
