@@ -4,6 +4,36 @@ Adaptive runtime intelligence for the BEAM.
  
 Move beyond static supervision. Give your application the capability to self-diagnose incidents, analyze traffic patterns, and optimize its own performance.
 
+**[Request free early access to the web dashboard here](https://forms.gle/1KDwTLTC1UNwhGbh7)**. The web dashboard will be **free**, I just want to get early feedback first before releasing to everyone.
+
+## The Problem
+
+OTP is a masterpiece of reliability, but it is static. You define pool sizes, timeouts, and supervision strategies at compile time (or config time).
+
+But production is dynamic. User behavior changes. Traffic patterns shift. A configuration that worked yesterday might be a bottleneck today.
+
+Standard monitoring tools show you what is happening (metrics), but they don't understand why. They cannot tell you that your user traffic has shifted from "write-heavy" to "read-heavy," requiring a different architecture. And they certainly can't fix the issues for you!
+
+## The Solution
+
+beamlens is an adaptive runtime engine that lives inside your supervision tree. It's built on battle-hardened AI practices from the best known techniques in the industry. You wire it into your system and it performs deep analysis for you.
+
+1. **Deep Context**: When triggered, it captures internal state that external monitors miss—ETS key distribution, process dictionary size, and scheduler utilization.
+
+2. **Semantic Analysis**: It uses an LLM to interpret that raw data. Instead of just showing you a graph, it explains why the graph looks that way.
+
+3. **Adaptive Feedback**: Over time, you can use these insights to optimize configurations or refactor bottlenecks based on actual production behavior.
+
+## Features
+
+* **Sandboxed Analysis**: All investigation logic runs in a restricted environment. The "brain" observes without interfering with the "body."
+
+* **Privacy-First**: Telemetry data is processed within your infrastructure. You choose the LLM provider; your application state is never sent to beamlens servers.
+
+* **Extensible Skills**: Teach beamlens to understand your domain. If you are building a video platform, give it a skill to analyze `ffmpeg` process metrics.
+
+* **Low Overhead**: Agents are dormant until triggered.
+
 ## The Result
 
 beamlens translates opaque runtime metrics into semantic explanations.
@@ -21,6 +51,19 @@ result.insights
 #    ]
 ```
 
+## Roadmap
+
+This is just the start. Future plans include:
+
+- A web interface for easy access and visualization of insights - **[Request early access here](https://forms.gle/1KDwTLTC1UNwhGbh7)**
+- Better integration with Phoenix and other frameworks and libraries
+- Long term agent memory and state management
+- Code integration to understand issues at a deeper level
+- Continuous monitoring and alerting
+- And more...
+
+We're going towards a future where software systems become self-aware and self-healing. Wake up, let's make it happen on the BEAM!
+
 ## Installation
 
 Add `beamlens` to your list of dependencies in `mix.exs`:
@@ -28,7 +71,7 @@ Add `beamlens` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:beamlens, "~> 0.1.0"}
+    {:beamlens, "~> 0.2.0"}
   ]
 end
 ```
@@ -73,36 +116,6 @@ end
 {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
 ```
 
-## The Problem
-
-OTP is a masterpiece of reliability, but it is static. You define pool sizes, timeouts, and supervision strategies at compile time (or config time).
-
-But production is dynamic. User behavior changes. Traffic patterns shift. A configuration that worked yesterday might be a bottleneck today.
-
-Standard monitoring tools show you what is happening (metrics), but they don't understand why. They cannot tell you that your user traffic has shifted from "write-heavy" to "read-heavy," requiring a different architecture.
-
-## The Solution
-
-beamlens is an investigation engine that lives inside your supervision tree. It doesn't replace your monitoring; it answers the questions your monitoring raises.
-
-You wire it into your system triggers (Telemetry, Oban, or manual administration), and it performs the deep analysis for you.
-
-1. Deep Context: When triggered, it captures internal state that external monitors miss—ETS key distribution, process dictionary size, and scheduler utilization.
-
-2. Semantic Analysis: It uses an LLM to interpret that raw data. Instead of just showing you a graph, it explains why the graph looks that way.
-
-3. Adaptive Feedback: Over time, you can use these insights to optimize configurations or refactor bottlenecks based on actual production behavior.
-
-## Features
-
-* **Sandboxed Analysis**: All investigation logic runs in a restricted environment. The "brain" observes without interfering with the "body."
-
-* **Privacy-First**: Telemetry data is processed within your infrastructure. You choose the LLM provider; your application state is never sent to beamlens servers.
-
-* **Extensible Skills**: Teach beamlens to understand your domain. If you are building a video platform, give it a skill to analyze `ffmpeg` process metrics.
-
-* **Low Overhead**: Agents are dormant until triggered.
-
 ## Examples
 
 **1. Triggering from Telemetry**
@@ -125,11 +138,15 @@ You can teach beamlens to understand your specific business logic. For example, 
 ```elixir
 defmodule MyApp.Skills.Batcher do
   @behaviour Beamlens.Skill
+  
+  # Shortened for brevity, see the Beamlens.Skill behaviour for full implementation details.
 
+  @impl true
   def system_prompt do
     "You are checking the Batcher process. Watch for 'queue_size' > 5000."
   end
 
+  @impl true
   def snapshot do
     %{
       queue_size: MyApp.Batcher.queue_size(),
@@ -173,6 +190,25 @@ defmodule MyApp.Skills.Healer do
   end
 end
 ```
+
+## Built-in Skills
+
+beamlens includes skills for common BEAM runtime monitoring:
+
+- **`Beamlens.Skill.Beam`** — BEAM VM health (memory, processes, schedulers, atoms, ports)
+- **`Beamlens.Skill.Ets`** — ETS table monitoring (counts, memory, top tables)
+- **`Beamlens.Skill.Gc`** — Garbage collection statistics
+- **`Beamlens.Skill.Logger`** — Application log analysis (error rates, patterns)
+- **`Beamlens.Skill.Ports`** — Port and socket monitoring
+- **`Beamlens.Skill.Sup`** — Supervisor tree inspection
+- **`Beamlens.Skill.System`** — OS-level metrics (CPU, memory, disk via `os_mon`)
+
+### Experimental Skills
+
+These skills require optional dependencies:
+
+- **`Beamlens.Skill.Ecto`** — Database monitoring (requires `ecto_psql_extras`)
+- **`Beamlens.Skill.Exception`** — Exception tracking (requires `tower`)
 
 ## License
 

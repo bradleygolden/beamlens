@@ -30,7 +30,7 @@ defmodule Beamlens do
 
   Add to your dependencies:
 
-      {:beamlens, "~> 0.1.0"}
+      {:beamlens, "~> 0.2.0"}
 
   ## Supervision Tree Setup
 
@@ -41,7 +41,7 @@ defmodule Beamlens do
 
         def start(_type, _args) do
           children = [
-            {Beamlens, operators: [:beam]}
+            {Beamlens, operators: [Beamlens.Skill.Beam]}
           ]
 
           Supervisor.start_link(children, strategy: :one_for_one)
@@ -61,7 +61,7 @@ defmodule Beamlens do
   Configure a custom provider via `:client_registry`:
 
       {Beamlens,
-        operators: [:beam],
+        operators: [Beamlens.Skill.Beam],
         client_registry: %{
           primary: "Ollama",
           clients: [
@@ -78,13 +78,13 @@ defmodule Beamlens do
 
   ### Operator Configuration
 
-  Operators can be specified as atoms or keyword lists:
+  Operators are specified as skill modules:
 
       # Built-in BEAM operator
-      :beam
+      Beamlens.Skill.Beam
 
       # Custom skill module
-      [name: :postgres, skill: MyApp.Skill.Postgres]
+      MyApp.Skill.Postgres
 
   ## Runtime API
 
@@ -92,7 +92,7 @@ defmodule Beamlens do
       Beamlens.list_operators()
 
       # Get status of a specific operator
-      Beamlens.operator_status(:beam)
+      Beamlens.operator_status(Beamlens.Skill.Beam)
 
   ## Telemetry Events
 

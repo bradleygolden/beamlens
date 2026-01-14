@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetry events for observability (operator lifecycle, LLM calls, notifications)
 - Skills run callbacks in a safe Lua sandbox environment
 - Deployment guide for scheduled monitoring scenarios
+- Architecture documentation explaining supervision tree and inter-process communication
 
 ### Changed
 
@@ -66,6 +67,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded Puck to 0.2.7
 - Operators run LLM-driven analysis loops instead of scheduled jobs
 - Operator LLM calls now run in the background for better performance
+- Skills are now identified by full module name (e.g., `Beamlens.Skill.Beam`) instead of atom shortcuts (e.g., `:beam`)
+- `Operator.run/2` accepts skill modules directly
+- Operator specifications simplified: use `MyApp.Skill.Custom` instead of `[name: :custom, skill: MyApp.Skill.Custom]`
+
+### Fixed
+
+- Coordinator no longer crashes when LLM outputs invalid skill names
 
 ### Removed
 
@@ -82,6 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beamlens.investigate/1 — notifications now sent automatically via telemetry
 - Beamlens.trigger_operator/1 — operators are self-managing
 - Beamlens.pending_notifications?/0 — replaced by telemetry events
+- `id/0` callback from `Beamlens.Skill` behaviour — modules are now identified by name
+- `:name` option from operator specifications — skill module serves as identifier
 
 ## [0.1.0] - 2025-01-03
 

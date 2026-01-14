@@ -34,7 +34,7 @@ beamlens uses direct Erlang message passing for operator-coordinator communicati
 ```elixir
 # When Coordinator spawns an Operator
 {:ok, operator_pid} = Operator.start_link(
-  skill: :beam,
+  skill: Beamlens.Skill.Beam,
   notify_pid: self(),  # Coordinator PID
   # ...
 )
@@ -43,7 +43,7 @@ beamlens uses direct Erlang message passing for operator-coordinator communicati
 send(notify_pid, {:operator_notification, self(), notification})
 
 # Operator signals completion
-send(notify_pid, {:operator_complete, self(), :beam, result})
+send(notify_pid, {:operator_complete, self(), Beamlens.Skill.Beam, result})
 ```
 
 ### Why Direct Messages?
@@ -69,10 +69,10 @@ send(notify_pid, {:operator_complete, self(), :beam, result})
        │ spawn + link
        ├─────────────┐
        ▼             ▼
-  ┌─────────┐   ┌─────────┐
-  │Operator │   │Operator │
-  │  :beam  │   │  :ets   │
-  └─────────┘   └─────────┘
+  ┌─────────────────────┐   ┌─────────────────────┐
+  │      Operator       │   │      Operator       │
+  │ Beamlens.Skill.Beam │   │ Beamlens.Skill.Ets  │
+  └─────────────────────┘   └─────────────────────┘
        │             │
        └──────┬──────┘
               │ send messages
@@ -91,7 +91,7 @@ send(notify_pid, {:operator_complete, self(), :beam, result})
 ```elixir
 {:operator_notification, operator_pid, %Notification{
   id: "abc123",
-  operator: :beam,
+  operator: Beamlens.Skill.Beam,
   anomaly_type: "memory_threshold_exceeded",
   severity: :warning,
   summary: "Memory usage at 92%",
@@ -99,17 +99,18 @@ send(notify_pid, {:operator_complete, self(), :beam, result})
 }}
 ```
 
-See `lib/beamlens/operator.ex:438` for implementation.
+See `lib/beamlens/operator.ex:435` for implementation.
 
 #### Completion Message
 ```elixir
-{:operator_complete, operator_pid, :beam, %{
-  summary: "Analysis complete. No critical issues.",
-  notifications: [...]
+{:operator_complete, operator_pid, Beamlens.Skill.Beam, %Beamlens.Operator.CompletionResult{
+  state: :healthy,
+  notifications: [...],
+  snapshots: [...]
 }}
 ```
 
-See `lib/beamlens/operator.ex:735` for implementation.
+See `lib/beamlens/operator.ex:732` for implementation.
 
 #### Crash Handling
 ```elixir
@@ -165,7 +166,7 @@ Operators can run without a coordinator:
 
 ```elixir
 # No notify_pid — operator doesn't send messages
-{:ok, pid} = Operator.start_link(skill: :beam)
+{:ok, pid} = Operator.start_link(skill: Beamlens.Skill.Beam)
 
 # Query status directly
 status = Operator.status(pid)
@@ -215,7 +216,7 @@ The LLM controls the loop timing via the `wait` tool. There are no fixed schedul
 For scheduled or triggered analysis (e.g., Oban workers):
 
 ```elixir
-{:ok, notifications} = Beamlens.Operator.run(:beam, %{reason: "high memory detected"})
+{:ok, notifications} = Beamlens.Operator.run(Beamlens.Skill.Beam, %{reason: "high memory detected"})
 ```
 
 The LLM investigates and calls `done()` when finished, returning notifications generated during analysis.
@@ -365,7 +366,7 @@ Configure alternative LLM providers via `:client_registry`:
 
 ```elixir
 {Beamlens,
-  operators: [:beam],
+  operators: [Beamlens.Skill.Beam],
   client_registry: %{
     primary: "Ollama",
     clients: [
@@ -401,17 +402,17 @@ Compaction events are emitted via telemetry: `[:beamlens, :compaction, :start]` 
 
 ## Built-in Skills
 
-| Skill | Module | Description |
-|-------|--------|-------------|
-| `:beam` | `Beamlens.Skill.Beam` | BEAM VM metrics (memory, processes, schedulers, atoms) |
-| `:ets` | `Beamlens.Skill.Ets` | ETS table monitoring |
-| `:gc` | `Beamlens.Skill.Gc` | Garbage collection statistics |
-| `:logger` | `Beamlens.Skill.Logger` | Application log monitoring |
-| `:ports` | `Beamlens.Skill.Ports` | Port monitoring (file descriptors, sockets) |
-| `:sup` | `Beamlens.Skill.Sup` | Supervisor tree monitoring |
-| `:system` | `Beamlens.Skill.System` | OS-level metrics (CPU, memory, disk via os_mon) |
+| Module | Description |
+|--------|-------------|
+| `Beamlens.Skill.Beam` | BEAM VM metrics (memory, processes, schedulers, atoms) |
+| `Beamlens.Skill.Ets` | ETS table monitoring |
+| `Beamlens.Skill.Gc` | Garbage collection statistics |
+| `Beamlens.Skill.Logger` | Application log monitoring |
+| `Beamlens.Skill.Ports` | Port monitoring (file descriptors, sockets) |
+| `Beamlens.Skill.Sup` | Supervisor tree monitoring |
+| `Beamlens.Skill.System` | OS-level metrics (CPU, memory, disk via os_mon) |
 
-### BEAM Skill (`:beam`)
+### BEAM Skill (`Beamlens.Skill.Beam`)
 
 Monitors BEAM VM runtime health.
 
@@ -434,7 +435,7 @@ Monitors BEAM VM runtime health.
 | `beam_get_persistent_terms()` | Persistent term count and memory |
 | `beam_top_processes(limit, sort_by)` | Top processes by memory/queue/reductions |
 
-### ETS Skill (`:ets`)
+### ETS Skill (`Beamlens.Skill.Ets`)
 
 Monitors ETS table health and memory usage.
 
@@ -451,7 +452,7 @@ Monitors ETS table health and memory usage.
 | `ets_table_info(table_name)` | Single table details |
 | `ets_top_tables(limit, sort_by)` | Top N tables by "memory" or "size" |
 
-### GC Skill (`:gc`)
+### GC Skill (`Beamlens.Skill.Gc`)
 
 Monitors garbage collection activity.
 
@@ -467,7 +468,7 @@ Monitors garbage collection activity.
 | `gc_stats()` | Global GC statistics |
 | `gc_top_processes(limit)` | Processes with largest heaps |
 
-### Logger Skill (`:logger`)
+### Logger Skill (`Beamlens.Skill.Logger`)
 
 Monitors application logs via Erlang's `:logger` handler system.
 
@@ -490,7 +491,7 @@ Monitors application logs via Erlang's `:logger` handler system.
 | `logger_search(pattern, limit)` | Search logs by regex pattern |
 | `logger_by_module(module_name, limit)` | Logs from modules matching name |
 
-### Ports Skill (`:ports`)
+### Ports Skill (`Beamlens.Skill.Ports`)
 
 Monitors BEAM ports (file descriptors, sockets).
 
@@ -507,7 +508,7 @@ Monitors BEAM ports (file descriptors, sockets).
 | `ports_info(port_id)` | Port details: I/O bytes, memory |
 | `ports_top(limit, sort_by)` | Top N ports by "input", "output", or "memory" |
 
-### Sup Skill (`:sup`)
+### Sup Skill (`Beamlens.Skill.Sup`)
 
 Monitors supervisor tree structure.
 
@@ -523,7 +524,7 @@ Monitors supervisor tree structure.
 | `sup_children(supervisor_name)` | Direct children: id, pid, type |
 | `sup_tree(supervisor_name)` | Full supervision tree (recursive, depth-limited) |
 
-### System Skill (`:system`)
+### System Skill (`Beamlens.Skill.System`)
 
 Monitors OS-level system health via Erlang's os_mon application.
 
@@ -543,7 +544,7 @@ Monitors OS-level system health via Erlang's os_mon application.
 | `system_get_memory()` | System memory stats |
 | `system_get_disks()` | Disk usage per mount point |
 
-### Ecto Skill (`:ecto`)
+### Ecto Skill (`Beamlens.Skill.Ecto`)
 
 Monitors Ecto database health. Requires a custom skill module and supporting infrastructure.
 
@@ -566,7 +567,7 @@ children = [
   # Configure Beamlens with Ecto skill
   {Beamlens,
     client_registry: client_registry(),
-    operators: [[name: :ecto, skill: MyApp.EctoSkill]]}
+    operators: [[skill: MyApp.EctoSkill]]}
 ]
 
 # Trigger investigation
@@ -600,7 +601,7 @@ children = [
 
 PostgreSQL-specific callbacks require `{:ecto_psql_extras, "~> 0.8"}` as an optional dependency.
 
-### Exception Skill (`:exception`)
+### Exception Skill (`Beamlens.Skill.Exception`)
 
 Monitors application exceptions via Tower's reporter system.
 
@@ -641,9 +642,6 @@ Implement the `Beamlens.Skill` behaviour to create custom monitoring skills:
 ```elixir
 defmodule MyApp.Skills.Postgres do
   @behaviour Beamlens.Skill
-
-  @impl true
-  def id, do: :postgres
 
   @impl true
   def title, do: "PostgreSQL"
@@ -699,7 +697,7 @@ Register in supervision tree:
 ```elixir
 {Beamlens,
   client_registry: client_registry(),
-  operators: [:beam, [name: :postgres, skill: MyApp.Skills.Postgres]]}
+  operators: [Beamlens.Skill.Beam, MyApp.Skills.Postgres]}
 
 # Trigger investigation
 {:ok, result} = Beamlens.Coordinator.run(%{reason: "database performance check"})

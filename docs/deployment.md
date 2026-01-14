@@ -22,10 +22,18 @@ For scheduled monitoring (useful for reducing LLM costs or running analysis peri
 defmodule MyApp.BeamlensWorker do
   use Oban.Worker, queue: :monitoring
 
-  def perform(%{args: %{"skill" => skill}}) do
+  @skills %{
+    "beam" => Beamlens.Skill.Beam,
+    "ets" => Beamlens.Skill.Ets,
+    "gc" => Beamlens.Skill.Gc
+  }
+
+  def perform(%{args: %{"skill" => skill_name}}) do
+    skill_module = Map.fetch!(@skills, skill_name)
+
     {:ok, _notifications} =
       Beamlens.Operator.run(
-        String.to_existing_atom(skill),
+        skill_module,
         %{reason: "scheduled monitoring check"},
         client_registry: client_registry()
       )
