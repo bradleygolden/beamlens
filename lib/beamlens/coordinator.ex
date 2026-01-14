@@ -122,7 +122,7 @@ defmodule Beamlens.Coordinator do
 
       # With specific skills (no pre-configuration needed)
       {:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert"},
-        skills: [:beam, :ets, :system]
+        skills: [Beamlens.Skill.Beam, Beamlens.Skill.Ets, Beamlens.Skill.System]
       )
 
       # Use all builtins when no operators configured
@@ -533,15 +533,10 @@ defmodule Beamlens.Coordinator do
   defp handle_action(%MessageOperator{skill: skill, message: message}, state, trace_id) do
     emit_telemetry(:message_operator, state, %{trace_id: trace_id, skill: skill})
 
-    skill_atom =
-      try do
-        String.to_existing_atom(skill)
-      rescue
-        ArgumentError -> nil
-      end
+    skill_module = resolve_skill_module(skill)
 
     result =
-      case skill_atom && find_operator_by_skill(state.running_operators, skill_atom) do
+      case skill_module && find_operator_by_skill(state.running_operators, skill_module) do
         nil ->
           %{skill: skill, error: "operator not running"}
 
@@ -634,19 +629,14 @@ defmodule Beamlens.Coordinator do
     end)
   end
 
-  defp start_operator(skill, context, client_registry, running_operators) do
-    skill_atom =
-      try do
-        String.to_existing_atom(skill)
-      rescue
-        ArgumentError -> nil
-      end
+  defp start_operator(skill_string, context, client_registry, running_operators) do
+    skill_module = resolve_skill_module(skill_string)
 
-    case skill_atom && Operator.Supervisor.resolve_skill(skill_atom) do
+    case skill_module && Operator.Supervisor.resolve_skill(skill_module) do
       nil ->
         running_operators
 
-      {:ok, {_name, skill_module}} ->
+      {:ok, ^skill_module} ->
         run_opts =
           [
             skill: skill_module,
@@ -661,7 +651,7 @@ defmodule Beamlens.Coordinator do
             ref = Process.monitor(pid)
 
             Map.put(running_operators, pid, %{
-              skill: skill_atom,
+              skill: skill_module,
               ref: ref,
               started_at: DateTime.utc_now()
             })
@@ -675,8 +665,19 @@ defmodule Beamlens.Coordinator do
     end
   end
 
-  defp find_operator_by_skill(running_operators, skill) do
-    Enum.find(running_operators, fn {_pid, %{skill: s}} -> s == skill end)
+  defp resolve_skill_module(skill_string) do
+    module = String.to_existing_atom("Elixir." <> skill_string)
+
+    case Operator.Supervisor.resolve_skill(module) do
+      {:ok, ^module} -> module
+      _ -> nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp find_operator_by_skill(running_operators, skill_module) do
+    Enum.find(running_operators, fn {_pid, %{skill: s}} -> s == skill_module end)
   end
 
   defp find_operator_by_ref(running_operators, ref) do
@@ -742,15 +743,15 @@ defmodule Beamlens.Coordinator do
     case Operator.Supervisor.configured_operators() do
       [] ->
         Operator.Supervisor.builtin_skills()
-        |> Enum.map_join(", ", &to_string/1)
+        |> Enum.map_join(", ", &module_name/1)
 
       operators ->
-        Enum.map_join(operators, ", ", &to_string/1)
+        Enum.map_join(operators, ", ", &module_name/1)
     end
   end
 
   defp build_available_skills(skills) when is_list(skills) do
-    Enum.map_join(skills, ", ", &to_string/1)
+    Enum.map_join(skills, ", ", &module_name/1)
   end
 
   defp build_operator_descriptions(nil) do
@@ -762,7 +763,9 @@ defmodule Beamlens.Coordinator do
         operators
         |> Enum.map(&Operator.Supervisor.resolve_skill/1)
         |> Enum.filter(&match?({:ok, _}, &1))
-        |> Enum.map_join("\n", fn {:ok, {name, skill}} -> "- #{name}: #{skill.description()}" end)
+        |> Enum.map_join("\n", fn {:ok, skill} ->
+          "- #{module_name(skill)}: #{skill.description()}"
+        end)
     end
   end
 
@@ -774,7 +777,13 @@ defmodule Beamlens.Coordinator do
     skills
     |> Enum.map(&Operator.Supervisor.resolve_skill/1)
     |> Enum.filter(&match?({:ok, _}, &1))
-    |> Enum.map_join("\n", fn {:ok, {name, skill}} -> "- #{name}: #{skill.description()}" end)
+    |> Enum.map_join("\n", fn {:ok, skill} ->
+      "- #{module_name(skill)}: #{skill.description()}"
+    end)
+  end
+
+  defp module_name(module) when is_atom(module) do
+    module |> Module.split() |> Enum.join(".")
   end
 
   @doc false
