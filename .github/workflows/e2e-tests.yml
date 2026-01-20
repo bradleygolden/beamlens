@@ -8,16 +8,22 @@ on:
         required: true
         default: 'integration'
         type: string
-      provider:
-        description: 'LLM provider'
-        required: true
-        default: 'anthropic'
-        type: choice
-        options:
-          - anthropic
-          - openai
-          - google-ai
-          - zai
+      anthropic:
+        description: 'Run with Anthropic'
+        type: boolean
+        default: true
+      openai:
+        description: 'Run with OpenAI'
+        type: boolean
+        default: false
+      google-ai:
+        description: 'Run with Google AI'
+        type: boolean
+        default: false
+      zai:
+        description: 'Run with Zai'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,16 +40,26 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      - name: Build matrix from tags
+      - name: Build matrix from tags and providers
         id: set-matrix
         run: |
           TAGS="${{ inputs.tags }}"
-          JSON=$(echo "$TAGS" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s -c '{tag: .}')
+          TAGS_JSON=$(echo "$TAGS" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+
+          PROVIDERS=""
+          if [ "${{ inputs.anthropic }}" == "true" ]; then PROVIDERS="$PROVIDERS anthropic"; fi
+          if [ "${{ inputs.openai }}" == "true" ]; then PROVIDERS="$PROVIDERS openai"; fi
+          if [ "${{ inputs.google-ai }}" == "true" ]; then PROVIDERS="$PROVIDERS google-ai"; fi
+          if [ "${{ inputs.zai }}" == "true" ]; then PROVIDERS="$PROVIDERS zai"; fi
+
+          PROVIDERS_JSON=$(echo "$PROVIDERS" | tr ' ' '\n' | grep -v '^$' | jq -R . | jq -s .)
+
+          JSON=$(jq -n -c --argjson tags "$TAGS_JSON" --argjson providers "$PROVIDERS_JSON" '{tag: $tags, provider: $providers}')
           echo "matrix=$JSON" >> $GITHUB_OUTPUT
           echo "Matrix: $JSON"
 
   e2e-tests:
-    name: "${{ matrix.tag }} (${{ inputs.provider }})"
+    name: "${{ matrix.tag }} (${{ matrix.provider }})"
     needs: prepare
     runs-on: ubuntu-latest
     environment: e2e-tests
@@ -82,7 +98,7 @@ jobs:
 
     - name: Run ${{ matrix.tag }} tests
       env:
-        BEAMLENS_TEST_PROVIDER: ${{ inputs.provider }}
+        BEAMLENS_TEST_PROVIDER: ${{ matrix.provider }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
