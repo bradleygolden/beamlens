@@ -9,13 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Google AI (Gemini) provider support for integration tests via `BEAMLENS_TEST_PROVIDER=google-ai`
+- Operators and Coordinator are now always-running supervised processes
+- New `Operator.run_async/3` for running analysis in the background with progress notifications
+- Multiple analysis requests to the same operator are queued and processed in order
+- Google AI (Gemini) provider support for integration tests
+
+### Changed
+
+- **Breaking:** Configuration option renamed from `:operators` to `:skills`
+  ```elixir
+  # Before
+  {Beamlens, operators: [Beamlens.Skill.Beam]}
+
+  # After
+  {Beamlens, skills: [Beamlens.Skill.Beam]}
+  ```
+- **Breaking:** `Operator.run/2` raises `ArgumentError` if the operator is not configured in the supervision tree
+- **Breaking:** `Coordinator.run/2` raises `ArgumentError` if Beamlens is not in the supervision tree
+
+### Removed
+
+- `Operator.Supervisor.start_operator/2` - configure operators via `:skills` option instead
+- `Operator.Supervisor.stop_operator/2` - operators now remain running
 
 ### Fixed
 
 - Unit tests no longer make LLM provider calls
 - Eval tests now respect `BEAMLENS_TEST_PROVIDER` configuration
-- `OperatorSupervisor.start_operator/2` test uses module-based skill identification
 
 ## [0.2.0] - 2026-01-14
 
