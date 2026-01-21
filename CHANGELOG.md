@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SystemMonitor skill for tracking long_gc and long_schedule events
 - Scheduler utilization (wall time) tracking callbacks in Beam skill (`beam_scheduler_utilization`, `beam_scheduler_capacity_available`, `beam_scheduler_health`)
 - Message queue overload detection callbacks in Beam skill: `beam_queue_processes/1`, `beam_queue_growth/2`, `beam_queue_stats/0`
-- Binary memory leak detection callbacks in Beam skill (`beam_binary_leak`, `beam_binary_top_memory`)
+- Binary memory leak detection callbacks in Beam skill (`beam_binary_leak`, `beam_binary_top_memory`, `beam_binary_info`)
+- Binary memory tracking in Beam skill snapshot (`binary_memory_mb`)
+- Rate limiting for `beam_binary_leak` GC calls (once per minute)
 - Message queue overload detection: `beam_queue_processes/1`, `beam_queue_growth/2`, `beam_queue_stats/0`
 - Operators and Coordinator are now always-running supervised processes
 - New `Operator.run_async/3` for running analysis in the background with progress notifications
