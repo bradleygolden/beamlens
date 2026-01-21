@@ -87,6 +87,8 @@ defmodule Beamlens.Skill.Beam do
   """
   @impl true
   def snapshot do
+    memory = :erlang.memory()
+
     %{
       process_utilization_pct:
         Float.round(
@@ -98,7 +100,8 @@ defmodule Beamlens.Skill.Beam do
       atom_utilization_pct:
         Float.round(:erlang.system_info(:atom_count) / :erlang.system_info(:atom_limit) * 100, 2),
       scheduler_run_queue: :erlang.statistics(:run_queue),
-      schedulers_online: :erlang.system_info(:schedulers_online)
+      schedulers_online: :erlang.system_info(:schedulers_online),
+      binary_memory_mb: bytes_to_mb(memory[:binary])
     }
   end
 
@@ -120,6 +123,7 @@ defmodule Beamlens.Skill.Beam do
       "beam_top_processes" => &top_processes_wrapper/2,
       "beam_binary_leak" => &binary_leak_wrapper/1,
       "beam_binary_top_memory" => &binary_top_memory_wrapper/1,
+      "beam_binary_info" => &binary_info_wrapper/1,
       "beam_queue_processes" => &queue_processes_wrapper/1,
       "beam_queue_growth" => &queue_growth_wrapper/2,
       "beam_queue_stats" => &queue_stats/0,
@@ -164,6 +168,9 @@ defmodule Beamlens.Skill.Beam do
 
     ### beam_binary_top_memory(limit)
     Returns top N processes by current binary memory usage. Includes: total_processes, showing, processes list with pid, name, binary_count, binary_memory_kb, current_function. Does not force GC.
+
+    ### beam_binary_info(pid)
+    Detailed binary information for a single process. Returns pid, name, binary_count, binary_memory_kb, current_function, and list of binaries with id, size_bytes, refcount. Use to investigate specific processes identified by beam_binary_leak or beam_binary_top_memory.
 
     ### beam_queue_processes(threshold)
     All processes with message_queue_len > threshold. Returns processes list with pid, name, message_queue, current_function, sorted by queue size (largest first)
@@ -352,6 +359,11 @@ defmodule Beamlens.Skill.Beam do
     binary_top_memory(%{limit: limit})
   end
 
+  defp binary_info_wrapper(pid_str) when is_binary(pid_str) do
+    pid = pid_to_pid(pid_str)
+    binary_info_detailed(pid)
+  end
+
   defp queue_processes_wrapper(threshold) when is_number(threshold) do
     queue_processes(threshold)
   end
@@ -364,35 +376,58 @@ defmodule Beamlens.Skill.Beam do
   defp binary_leak(opts) do
     limit = min(Map.get(opts, :limit) || 10, 50)
 
+    case check_gc_rate_limit() do
+      :ok ->
+        deltas = calculate_binary_deltas(limit)
+        build_binary_leak_result(limit, deltas)
+
+      {:error, :rate_limited} ->
+        build_rate_limited_result(limit)
+    end
+  end
+
+  defp calculate_binary_deltas(limit) do
     before = Enum.map(Process.list(), &binary_info/1)
-
     :erlang.garbage_collect()
-
     after_gc = Enum.map(Process.list(), &binary_info/1)
 
-    deltas =
-      Enum.zip([before, after_gc])
-      |> Enum.map(fn {before_proc, after_proc} ->
-        delta =
-          if is_nil(before_proc) || is_nil(after_proc) do
-            0
-          else
-            (after_proc[:binary_count] || 0) - (before_proc[:binary_count] || 0)
-          end
+    Enum.zip([before, after_gc])
+    |> Enum.map(&calculate_binary_delta/1)
+    |> Enum.filter(fn proc -> proc[:binary_delta] && proc[:binary_delta] > 0 end)
+    |> Enum.sort_by(& &1[:binary_delta], :desc)
+    |> Enum.take(limit)
+  end
 
-        Map.merge(after_proc || %{}, %{
-          binary_delta: delta
-        })
-      end)
-      |> Enum.filter(fn proc -> proc[:binary_delta] && proc[:binary_delta] > 0 end)
-      |> Enum.sort_by(& &1[:binary_delta], :desc)
-      |> Enum.take(limit)
+  defp calculate_binary_delta({before_proc, after_proc}) do
+    delta = compute_delta(before_proc, after_proc)
+    Map.merge(after_proc || %{}, %{binary_delta: delta})
+  end
 
+  defp compute_delta(nil, nil), do: 0
+  defp compute_delta(_before_proc, nil), do: 0
+  defp compute_delta(nil, _after_proc), do: 0
+
+  defp compute_delta(before_proc, after_proc) do
+    (after_proc[:binary_count] || 0) - (before_proc[:binary_count] || 0)
+  end
+
+  defp build_binary_leak_result(limit, deltas) do
     %{
       total_processes: :erlang.system_info(:process_count),
       showing: length(deltas),
       limit: limit,
       processes: deltas
+    }
+  end
+
+  defp build_rate_limited_result(limit) do
+    %{
+      total_processes: :erlang.system_info(:process_count),
+      showing: 0,
+      limit: limit,
+      processes: [],
+      error: "rate_limited",
+      message: "GC can only be run once per minute to avoid production impact"
     }
   end
 
@@ -450,6 +485,43 @@ defmodule Beamlens.Skill.Beam do
           binary_count: length(binaries),
           binary_memory_kb: binary_memory_kb,
           current_function: format_mfa(info[:current_function])
+        }
+    end
+  end
+
+  defp binary_info_detailed(pid) do
+    case Process.info(pid, @binary_keys) do
+      nil ->
+        %{
+          pid: inspect(pid),
+          error: "process_not_found"
+        }
+
+      info ->
+        binaries = info[:binary] || []
+
+        binary_memory_kb =
+          binaries
+          |> Enum.map(fn {_id, size, _count} -> size end)
+          |> Enum.sum()
+          |> Kernel.div(1024)
+
+        binary_list =
+          Enum.map(binaries, fn {id, size, count} ->
+            %{
+              id: inspect(id),
+              size_bytes: size,
+              refcount: count
+            }
+          end)
+
+        %{
+          pid: inspect(pid),
+          name: process_name(info),
+          binary_count: length(binaries),
+          binary_memory_kb: binary_memory_kb,
+          current_function: format_mfa(info[:current_function]),
+          binaries: binary_list
         }
     end
   end
@@ -1210,6 +1282,21 @@ defmodule Beamlens.Skill.Beam do
 
       true ->
         "Monitor atom growth. Normal rate is < 1-2 atoms/minute."
+    end
+  end
+
+  @gc_rate_limit_key :beam_binary_leak_last_gc
+  @gc_rate_limit_ms 60_000
+
+  defp check_gc_rate_limit do
+    now = System.system_time(:millisecond)
+    last_gc = Process.get(@gc_rate_limit_key, 0)
+
+    if now - last_gc >= @gc_rate_limit_ms do
+      Process.put(@gc_rate_limit_key, now)
+      :ok
+    else
+      {:error, :rate_limited}
     end
   end
 end
