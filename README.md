@@ -10,35 +10,16 @@ Move beyond static supervision. Give your application the capability to self-dia
 
 **[Request free early access to the web dashboard here](https://forms.gle/1KDwTLTC1UNwhGbh7)**. The web dashboard will be **free**, I just want to get early feedback first before releasing to everyone.
 
-## The Problem
+## How It Works
 
-OTP is a masterpiece of reliability, but it is static. You define pool sizes, timeouts, and supervision strategies at compile time (or config time).
+Beamlens lives inside your supervision tree. When triggered, it captures runtime state that external monitors miss—ETS distributions, process heaps, scheduler utilization—and uses an LLM to explain *why* your metrics look the way they do.
 
-But production is dynamic. User behavior changes. Traffic patterns shift. A configuration that worked yesterday might be a bottleneck today.
+- **Read-only**: All analysis is sandboxed. No side effects.
+- **Privacy-first**: Data stays in your infrastructure. You choose the LLM provider.
+- **Extensible**: Teach it your domain with custom skills.
+- **Low overhead**: No LLM calls until you trigger analysis.
 
-Standard monitoring tools show you what is happening (metrics), but they don't understand why. They cannot tell you that your user traffic has shifted from "write-heavy" to "read-heavy," requiring a different architecture. And they certainly can't fix the issues for you!
-
-## The Solution
-
-Beamlens is an adaptive runtime engine that lives inside your supervision tree. It's built on battle-hardened AI practices from the best known techniques in the industry. You wire it into your system and it performs deep analysis for you.
-
-1. **Deep Context**: When triggered, it captures internal state that external monitors miss—ETS key distribution, process dictionary size, and scheduler utilization.
-
-2. **Semantic Analysis**: It uses an LLM to interpret that raw data. Instead of just showing you a graph, it explains why the graph looks that way.
-
-3. **Adaptive Feedback**: Over time, you can use these insights to optimize configurations or refactor bottlenecks based on actual production behavior.
-
-## Features
-
-* **Sandboxed Analysis**: All investigation logic runs in a restricted environment. The "brain" observes without interfering with the "body."
-
-* **Privacy-First**: Telemetry data is processed within your infrastructure. You choose the LLM provider; your application state is never sent to Beamlens servers.
-
-* **Extensible Skills**: Teach Beamlens to understand your domain. If you are building a video platform, give it a skill to analyze `ffmpeg` process metrics.
-
-* **Low Overhead**: Operators wait idle until invoked. No LLM calls occur until you trigger analysis.
-
-## The Result
+## Example
 
 Beamlens translates opaque runtime metrics into semantic explanations.
 
@@ -57,18 +38,7 @@ result.insights
 
 ## Roadmap
 
-This is just the start. See the full roadmap [here](https://github.com/orgs/beamlens/projects/1).
-
-Future plans include:
-
-- A web interface for easy access and visualization of insights - **[Request early access here](https://forms.gle/1KDwTLTC1UNwhGbh7)**
-- Better integration with Phoenix and other frameworks and libraries
-- Long term agent memory and state management
-- Code integration to understand issues at a deeper level
-- Continuous monitoring and alerting
-- And more...
-
-We're going towards a future where software systems become self-aware and self-healing. Wake up, let's make it happen on the BEAM!
+See the [project roadmap](https://github.com/orgs/beamlens/projects/1) for planned features including a web dashboard, Phoenix integration, and continuous monitoring.
 
 ## Installation
 
@@ -97,56 +67,42 @@ def start(_type, _args) do
 end
 ```
 
-**2. Select a [provider](docs/providers.md)** or use the default Anthropic one by setting your API key:
+You can also configure which skills to enable:
+
+```elixir
+{Beamlens, skills: [
+  Beamlens.Skill.Beam,
+  {Beamlens.Skill.Monitor, [enabled: true, collection_interval_ms: 60_000]}
+]}
+```
+
+**2. Configure your LLM provider.** Set an API key for the default Anthropic provider:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
+Or configure a custom [provider](docs/providers.md) in your supervision tree:
+
 ```elixir
-client registry = %{
+{Beamlens, client_registry: %{
   primary: "Anthropic",
   clients: [
     %{name: "Anthropic", provider: "anthropic",
       options: %{model: "claude-haiku-4-5-20251001"}}
   ]
-}
+}}
 ```
 
 **3. Run Beamlens** (from an alert handler, Oban job, or IEx):
 
 ```elixir
-{:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."}, client_registry: client_registry)
+{:ok, result} = Beamlens.Coordinator.run(%{reason: "memory alert..."})
 ```
 
 ## Testing
 
-For deterministic tests without API keys, use `Puck.Test.mock_client/2` and pass
-the client via `:puck_client`. This bypasses BAML and the provider registry.
-
-```elixir
-client =
-  Puck.Test.mock_client([
-    %Beamlens.Operator.Tools.TakeSnapshot{intent: "take_snapshot"},
-    %Beamlens.Operator.Tools.Done{intent: "done"}
-  ])
-
-{:ok, pid} =
-  Beamlens.Operator.start_link(
-    skill: MyApp.Skill,
-    start_loop: true,
-    puck_client: client
-  )
-```
-
-For dynamic responses (e.g., referencing snapshot IDs), use function responses.
-See `Puck.Test` documentation for details.
-
-**Note:** This example shows the unit testing pattern using `Puck.Test.mock_client/2`.
-For integration tests with the full supervision tree, use `Operator.run/2` instead.
-
-Live-tagged tests require a real provider. Set `BEAMLENS_TEST_PROVIDER` to `anthropic`, `openai`,
-`google-ai`, or `ollama`. When set to `mock`, live tests are skipped.
+Use `Puck.Test.mock_client/2` for deterministic tests without API keys. See `Puck.Test` module docs for details.
 
 ## Examples
 
@@ -206,34 +162,35 @@ end
 Use `run_async/3` for background analysis with callbacks:
 
 ```elixir
-# Fire-and-forget analysis with callbacks
+# Look up the operator for a skill
+[{pid, _}] = Registry.lookup(Beamlens.OperatorRegistry, Beamlens.Skill.Beam)
+
+# Run asynchronously - returns immediately
 Beamlens.Operator.run_async(pid, %{reason: "background check"}, notify_pid: self())
 
+# Receive results when ready
 receive do
-  {:operator_notification, _pid, notification} ->
-    Logger.info("Got notification: #{notification.summary}")
-
   {:operator_complete, _pid, skill, result} ->
-    Logger.info("#{skill} completed with state: #{result.state}")
+    Logger.info("#{skill} completed: #{inspect(result.insights)}")
 end
 ```
 
-**5. Automated Remediation (Advanced)**
+**5. Custom Actions (Advanced)**
 
-Once you trust the diagnosis, you can authorize Beamlens to fix specific issues. This turns Beamlens from a passive observer into an active supervisor.
-
-**Note:** This requires explicit opt-in via the callbacks function.
+Skills can expose callbacks that the LLM can invoke. This allows Beamlens to take actions beyond read-only analysis—use with care.
 
 ```elixir
-defmodule MyApp.Skills.Healer do
+defmodule MyApp.Skills.PoolManager do
   @behaviour Beamlens.Skill
 
-  # Explicitly allow the operator to kill a process
+  # ... other callbacks (system_prompt, snapshot, etc.)
+
   @impl Beamlens.Skill
   def callbacks do
     %{
-      "kill_process" => fn pid_str ->
-        Process.exit(pid(pid_str), :kill)
+      # The LLM can request to resize a pool based on its analysis
+      "resize_pool" => fn size_str ->
+        MyApp.WorkerPool.resize(String.to_integer(size_str))
       end
     }
   end
