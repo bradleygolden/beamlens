@@ -52,8 +52,10 @@ defmodule Mix.Tasks.Beamlens.Install do
     # Beamlens uses Anthropic (claude-haiku-4-5-20251001) by default.
     # Set your ANTHROPIC_API_KEY environment variable and you're ready to go.
     #
-    # Beamlens has been added to your Application's supervision tree.
-    # To customize skills or LLM providers, see your Application module
+    # Beamlens has been added to your Application's supervision tree with default skills:
+    #   - Anomaly, Beam, Ets, Gc, Logger, Os, Ports, Supervisor, VmEvents
+    #
+    # To customize skills or LLM providers, update your Application module
     # or refer to docs/providers.md for configuration examples.
     """
 
