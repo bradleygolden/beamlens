@@ -57,7 +57,7 @@ defmodule Mix.Tasks.Beamlens.InstallTest do
       assert modified_source =~ "{Beamlens, []}"
 
       # Visual assertion: Configuration comment should be present
-      assert modified_source =~ "# Configure LLM providers with client_registry:"
+      assert modified_source =~ "# Beamlens monitors BEAM VM health"
     end
 
     test "creates children list when none exists" do
@@ -84,7 +84,7 @@ defmodule Mix.Tasks.Beamlens.InstallTest do
       assert modified_source =~ "{Beamlens, []}"
 
       # Visual assertion: Configuration comment should be present
-      assert modified_source =~ "# Configure LLM providers with client_registry:"
+      assert modified_source =~ "# Beamlens monitors BEAM VM health"
     end
 
     test "does not create config file" do
