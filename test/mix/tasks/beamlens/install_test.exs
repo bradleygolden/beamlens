@@ -47,13 +47,17 @@ defmodule Mix.Tasks.Beamlens.InstallTest do
         end
         """)
         |> Install.igniter()
+        |> apply_igniter!()
 
-      # Apply igniter - it should succeed
-      _project = apply_igniter!(project)
+      # Verify the modified module contains Beamlens child spec and configuration comment
+      modified_source =
+        Rewrite.source!(project.rewrite, "lib/application.ex") |> Rewrite.Source.get(:content)
 
-      # The test passes if apply_igniter! succeeds without errors
-      # This verifies the installer correctly patches the Application module
-      assert true
+      # Visual assertion: Beamlens child spec should be present
+      assert modified_source =~ "{Beamlens, []}"
+
+      # Visual assertion: Configuration comment should be present
+      assert modified_source =~ "# Configure LLM providers with client_registry:"
     end
 
     test "creates children list when none exists" do
@@ -70,12 +74,17 @@ defmodule Mix.Tasks.Beamlens.InstallTest do
         end
         """)
         |> Install.igniter()
+        |> apply_igniter!()
 
-      # Apply igniter
-      _project = apply_igniter!(project)
+      # Verify the modified module contains Beamlens child spec and configuration comment
+      modified_source =
+        Rewrite.source!(project.rewrite, "lib/application.ex") |> Rewrite.Source.get(:content)
 
-      # The test passes if apply_igniter! succeeds without errors
-      assert true
+      # Visual assertion: Beamlens child spec should be present
+      assert modified_source =~ "{Beamlens, []}"
+
+      # Visual assertion: Configuration comment should be present
+      assert modified_source =~ "# Configure LLM providers with client_registry:"
     end
 
     test "does not create config file" do
