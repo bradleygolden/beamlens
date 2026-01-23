@@ -74,7 +74,7 @@ defmodule Beamlens.MixProject do
         "format --check-formatted",
         "credo --strict",
         "sobelow --config --skip",
-        "dialyzer",
+        "dialyzer --list-unused-filters",
         "docs --warnings-as-errors"
       ]
     ]

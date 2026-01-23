@@ -87,14 +87,7 @@ defmodule Mix.Tasks.Beamlens.Install do
 
   defp build_child_spec do
     """
-            {Beamlens,
-             skills: [
-               Beamlens.Skill.Beam,
-               Beamlens.Skill.Ets,
-               Beamlens.Skill.Logger,
-               Beamlens.Skill.Gc,
-               Beamlens.Skill.Os
-             ]}
+            {Beamlens, []}
     """
   end
 
@@ -105,14 +98,7 @@ defmodule Mix.Tasks.Beamlens.Install do
     Please add it manually to your Application module's children list:
 
         children = [
-          {Beamlens,
-           skills: [
-             Beamlens.Skill.Beam,
-             Beamlens.Skill.Ets,
-             Beamlens.Skill.Logger,
-             Beamlens.Skill.Gc,
-             Beamlens.Skill.Os
-           ]}
+          {Beamlens, []}
         ]
     """
   end
