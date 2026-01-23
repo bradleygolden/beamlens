@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Installation
+
+- **Igniter installer** — Run `mix igniter.install beamlens` to automatically create `config/beamlens.exs` with LLM provider configuration and add Beamlens to your application's supervision tree
+
 #### New Skills
 
 - **Anomaly** — Statistical anomaly detection with self-learning baselines. Optionally auto-triggers Coordinator when anomalies escalate (`auto_trigger: true`).

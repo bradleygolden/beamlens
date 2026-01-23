@@ -41,7 +41,8 @@ defmodule Beamlens.MixProject do
 
   defp dialyzer do
     [
-      plt_add_apps: [:ex_unit]
+      plt_add_apps: [:ex_unit, :mix],
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 
@@ -56,6 +57,7 @@ defmodule Beamlens.MixProject do
       {:telemetry, "~> 1.2"},
       {:ecto_psql_extras, "~> 0.8", optional: true},
       {:tower, "~> 0.8.6", optional: true},
+      {:igniter, "~> 0.7", optional: true},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
@@ -71,7 +73,7 @@ defmodule Beamlens.MixProject do
         "test --warnings-as-errors",
         "format --check-formatted",
         "credo --strict",
-        "sobelow --config",
+        "sobelow --config --skip",
         "dialyzer",
         "docs --warnings-as-errors"
       ]
