@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Skill Enhancements
 
 - **Beam** — Scheduler utilization tracking, atom table growth monitoring, binary memory leak detection, message queue overload detection, process reduction profiling
-- **Ets** — Table growth tracking and leak candidate detection
+- **Ets** — Table growth tracking, orphan detection, and leak candidate detection
 - **Gc** — Memory variance detection, lazy GC identification, hibernation recommendations with estimated savings
 - **Ports** — Queue saturation monitoring with prediction, busy port detection, inet socket tracking with buffer monitoring
 - **Supervisor** — Orphaned/unlinked process detection, tree integrity checking, zombie child detection

@@ -145,6 +145,8 @@ defmodule Beamlens.Skill.EtsTest do
       assert docs =~ "ets_top_tables"
       assert docs =~ "ets_growth_stats"
       assert docs =~ "ets_leak_candidates"
+      assert docs =~ "ets_table_growth_rate"
+      assert docs =~ "ets_table_orphans"
     end
   end
 
@@ -210,6 +212,105 @@ defmodule Beamlens.Skill.EtsTest do
         assert Map.has_key?(leak, :memory_mb)
         assert Map.has_key?(leak, :only_grows)
         assert leak.only_grows == true
+      end
+    end
+  end
+
+  describe "ets_table_growth_rate callback" do
+    setup do
+      start_supervised!({Beamlens.Skill.Ets.GrowthStore, [name: Beamlens.Skill.Ets.GrowthStore]})
+      :ok
+    end
+
+    test "returns growth rate statistics" do
+      result = Ets.callbacks()["ets_table_growth_rate"].()
+
+      assert is_map(result)
+      assert Map.has_key?(result, :table_count)
+      assert Map.has_key?(result, :total_memory_mb)
+      assert Map.has_key?(result, :count_growth_rate)
+      assert Map.has_key?(result, :memory_growth_rate_mb)
+      assert Map.has_key?(result, :risk_level)
+      assert is_integer(result.table_count)
+      assert is_float(result.total_memory_mb)
+      assert is_float(result.count_growth_rate)
+      assert is_float(result.memory_growth_rate_mb)
+      assert is_binary(result.risk_level)
+    end
+
+    test "risk level is one of the expected values" do
+      result = Ets.callbacks()["ets_table_growth_rate"].()
+
+      assert result.risk_level in ["unknown", "stable", "warning", "growing", "dangerous"]
+    end
+
+    test "table count is non-negative" do
+      result = Ets.callbacks()["ets_table_growth_rate"].()
+
+      assert result.table_count >= 0
+    end
+
+    test "total memory is non-negative" do
+      result = Ets.callbacks()["ets_table_growth_rate"].()
+
+      assert result.total_memory_mb >= 0.0
+    end
+  end
+
+  describe "ets_table_orphans callback" do
+    test "returns orphan table information" do
+      result = Ets.callbacks()["ets_table_orphans"].()
+
+      assert is_map(result)
+      assert Map.has_key?(result, :orphan_tables)
+      assert Map.has_key?(result, :orphan_count)
+      assert is_list(result.orphan_tables)
+      assert is_integer(result.orphan_count)
+      assert result.orphan_count >= 0
+    end
+
+    test "orphan count matches list length" do
+      result = Ets.callbacks()["ets_table_orphans"].()
+
+      assert result.orphan_count == length(result.orphan_tables)
+    end
+
+    test "creates table with dead owner is detected as orphan" do
+      table = :ets.new(:orphan_test_table, [])
+
+      table_info = :ets.info(table)
+
+      assert {:owner, owner_pid} = List.keyfind(table_info, :owner, 0)
+      assert owner_pid == self()
+
+      refute :ets.info(table, :heir) == {:heir, self()}
+
+      result = Ets.callbacks()["ets_table_orphans"].()
+
+      assert is_list(result.orphan_tables)
+      assert is_integer(result.orphan_count)
+
+      :ets.delete(table)
+    end
+
+    test "orphan entries have expected fields when present" do
+      result = Ets.callbacks()["ets_table_orphans"].()
+
+      if result.orphan_tables != [] do
+        [orphan | _] = result.orphan_tables
+
+        assert Map.has_key?(orphan, :id)
+        assert Map.has_key?(orphan, :name)
+        assert Map.has_key?(orphan, :owner_pid)
+        assert Map.has_key?(orphan, :owner_alive)
+        assert Map.has_key?(orphan, :heir)
+        assert Map.has_key?(orphan, :status)
+        assert Map.has_key?(orphan, :action)
+        assert Map.has_key?(orphan, :size)
+        assert Map.has_key?(orphan, :memory_kb)
+        assert orphan.owner_alive == false
+        assert orphan.status in ["leaked", "heir_pending"]
+        assert orphan.action in ["delete_immediately", "awaiting_heir"]
       end
     end
   end
