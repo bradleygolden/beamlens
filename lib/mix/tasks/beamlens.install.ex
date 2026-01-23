@@ -3,8 +3,7 @@ defmodule Mix.Tasks.Beamlens.Install do
   @moduledoc """
   #{@shortdoc}
 
-  Running this command will automatically create the Beamlens configuration file
-  and add Beamlens to your supervision tree.
+  Running this command will add Beamlens to your supervision tree.
 
   ## Example
 
@@ -12,8 +11,10 @@ defmodule Mix.Tasks.Beamlens.Install do
 
   This will:
   - Add beamlens to mix.exs dependencies
-  - Create config/beamlens.exs with LLM provider configuration
   - Add Beamlens to your Application's supervision tree
+
+  Beamlens uses default skills and Anthropic claude-haiku. Set the ANTHROPIC_API_KEY
+  environment variable to get started. Refer to docs/providers.md for customization.
   """
 
   use Igniter.Mix.Task
@@ -40,36 +41,20 @@ defmodule Mix.Tasks.Beamlens.Install do
   @doc false
   @impl true
   def igniter(igniter) do
-    igniter
-    |> create_config_file()
-    |> patch_supervision_tree()
-  end
-
-  defp create_config_file(igniter) do
-    config_content = """
-    import Config
-
-    # Beamlens uses Anthropic (claude-haiku-4-5-20251001) by default.
-    # Set your ANTHROPIC_API_KEY environment variable and you're ready to go.
-    #
-    # Beamlens has been added to your Application's supervision tree with default skills:
-    #   - Anomaly, Beam, Ets, Gc, Logger, Os, Ports, Supervisor, VmEvents
-    #
-    # To customize skills or LLM providers, update your Application module
-    # or refer to docs/providers.md for configuration examples.
-    """
-
-    Igniter.create_new_file(igniter, "config/beamlens.exs", config_content)
+    case patch_supervision_tree(igniter) do
+      {:ok, igniter} -> igniter
+      {:error, igniter} -> igniter
+    end
   end
 
   defp patch_supervision_tree(igniter) do
-    Module.find_and_update_module!(igniter, "Application", fn zipper ->
+    Module.find_and_update_module(igniter, Application, fn zipper ->
       case Function.move_to_function_call(zipper, :start, 2) do
         {:ok, zipper} ->
           add_beamlens_to_children(zipper)
 
         :error ->
-          {:warning, supervision_tree_fallback()}
+          :error
       end
     end)
   end
@@ -77,31 +62,24 @@ defmodule Mix.Tasks.Beamlens.Install do
   defp add_beamlens_to_children(zipper) do
     child_spec = build_child_spec()
 
-    with {:ok, zipper} <- Keyword.get_key(zipper, :children),
-         {:ok, zipper} <- List.append_new_to_list(zipper, child_spec) do
-      {:ok, zipper}
-    else
-      _ ->
-        # If we can't append to the list, try adding it to the function body
-        Common.add_code(zipper, child_spec)
+    case Keyword.get_key(zipper, :children) do
+      {:ok, zipper} ->
+        case List.append_new_to_list(zipper, child_spec) do
+          {:ok, zipper} ->
+            {:ok, zipper}
+
+          :error ->
+            {:ok, Common.add_code(zipper, child_spec)}
+        end
+
+      :error ->
+        {:ok, Common.add_code(zipper, child_spec)}
     end
   end
 
   defp build_child_spec do
     """
-            {Beamlens, []}
-    """
-  end
-
-  defp supervision_tree_fallback do
-    """
-
-    Could not automatically add Beamlens to your supervision tree.
-    Please add it manually to your Application module's children list:
-
-        children = [
-          {Beamlens, []}
-        ]
+    {Beamlens, []}
     """
   end
 end
