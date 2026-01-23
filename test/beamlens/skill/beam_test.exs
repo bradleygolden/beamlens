@@ -78,6 +78,10 @@ defmodule Beamlens.Skill.BeamTest do
       assert Map.has_key?(callbacks, "beam_reduction_rate")
       assert Map.has_key?(callbacks, "beam_burst_detection")
       assert Map.has_key?(callbacks, "beam_hot_functions")
+      assert Map.has_key?(callbacks, "beam_atom_leak_analysis")
+      assert Map.has_key?(callbacks, "beam_atom_predict")
+      assert Map.has_key?(callbacks, "beam_atom_sources")
+      assert Map.has_key?(callbacks, "beam_atom_reminder")
     end
 
     test "callbacks are functions" do
@@ -97,6 +101,10 @@ defmodule Beamlens.Skill.BeamTest do
       assert is_function(callbacks["beam_reduction_rate"], 2)
       assert is_function(callbacks["beam_burst_detection"], 2)
       assert is_function(callbacks["beam_hot_functions"], 2)
+      assert is_function(callbacks["beam_atom_leak_analysis"], 0)
+      assert is_function(callbacks["beam_atom_predict"], 1)
+      assert is_function(callbacks["beam_atom_sources"], 1)
+      assert is_function(callbacks["beam_atom_reminder"], 0)
     end
   end
 
@@ -685,6 +693,135 @@ defmodule Beamlens.Skill.BeamTest do
 
       assert String.length(result.recommendation) > 0
       assert is_binary(result.recommendation)
+    end
+  end
+
+  describe "beam_atom_leak_analysis callback" do
+    setup do
+      start_supervised!({Beamlens.Skill.Beam.AtomStore, [name: Beamlens.Skill.Beam.AtomStore]})
+      :ok
+    end
+
+    test "returns analysis with all expected fields" do
+      result = Beam.callbacks()["beam_atom_leak_analysis"].()
+
+      assert is_integer(result.current_count)
+      assert is_integer(result.limit)
+      assert is_float(result.utilization_pct)
+      assert result.samples_count >= 0
+      assert result.trend in [:stable, :growing, :dangerous, :insufficient_data]
+      assert is_boolean(result.leak_detected)
+    end
+
+    test "growth_rate_per_hour is nil when insufficient data" do
+      result = Beam.callbacks()["beam_atom_leak_analysis"].()
+
+      if result.samples_count < 2 do
+        assert is_nil(result.growth_rate_per_hour)
+      end
+    end
+
+    test "time_until_full_hours is infinity or number" do
+      result = Beam.callbacks()["beam_atom_leak_analysis"].()
+
+      assert result.time_until_full_hours == :infinity or is_number(result.time_until_full_hours)
+    end
+  end
+
+  describe "beam_atom_predict callback" do
+    setup do
+      start_supervised!({Beamlens.Skill.Beam.AtomStore, [name: Beamlens.Skill.Beam.AtomStore]})
+      :ok
+    end
+
+    test "returns prediction for future time" do
+      result = Beam.callbacks()["beam_atom_predict"].(24)
+
+      assert is_integer(result.projected_count)
+      assert is_float(result.projected_utilization_pct)
+      assert is_boolean(result.will_exhaust)
+      assert result.hours_ahead == 24
+    end
+
+    test "exhaustion_date is nil when will not exhaust" do
+      result = Beam.callbacks()["beam_atom_predict"].(1)
+
+      if not result.will_exhaust do
+        assert is_nil(result.exhaustion_date)
+      end
+    end
+
+    test "returns error when insufficient data" do
+      result = Beam.callbacks()["beam_atom_predict"].(24)
+
+      if Map.has_key?(result, :error) do
+        assert result.error in ["insufficient_data", "insufficient_time_span"]
+      end
+    end
+  end
+
+  describe "beam_atom_sources callback" do
+    test "returns sources map with expected structure" do
+      result = Beam.callbacks()["beam_atom_sources"].(10)
+
+      assert is_map(result)
+      assert is_integer(result.count)
+      assert is_list(result.sources)
+    end
+
+    test "sources list contains valid entries" do
+      result = Beam.callbacks()["beam_atom_sources"].(5)
+
+      Enum.each(result.sources, fn source ->
+        assert is_binary(source.file)
+        assert is_integer(source.line)
+        assert is_binary(source.pattern)
+        assert is_binary(source.recommendation)
+        assert is_float(source.confidence)
+        assert source.confidence >= 0.0
+        assert source.confidence <= 1.0
+      end)
+    end
+
+    test "limit parameter controls results count" do
+      result_small = Beam.callbacks()["beam_atom_sources"].(2)
+      result_large = Beam.callbacks()["beam_atom_sources"].(10)
+
+      assert result_small.count <= 2
+      assert result_large.count <= 10
+    end
+  end
+
+  describe "beam_atom_reminder callback" do
+    test "returns remediation guidance text" do
+      result = Beam.callbacks()["beam_atom_reminder"].()
+
+      assert is_binary(result)
+      assert String.length(result) > 0
+    end
+
+    test "guidance contains key sections" do
+      result = Beam.callbacks()["beam_atom_reminder"].()
+
+      assert String.contains?(result, "Atom Leak Remediation")
+      assert String.contains?(result, "Critical Thresholds")
+      assert String.contains?(result, "Common Sources")
+      assert String.contains?(result, "How to Fix")
+    end
+
+    test "guidance mentions unsafe patterns" do
+      result = Beam.callbacks()["beam_atom_reminder"].()
+
+      assert String.contains?(result, "binary_to_atom")
+      assert String.contains?(result, "list_to_atom")
+      assert String.contains?(result, "xmerl")
+    end
+
+    test "guidance includes safe alternatives" do
+      result = Beam.callbacks()["beam_atom_reminder"].()
+
+      assert String.contains?(result, "binary_to_existing_atom")
+      assert String.contains?(result, "list_to_existing_atom")
     end
   end
 end

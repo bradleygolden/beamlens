@@ -135,7 +135,11 @@ defmodule Beamlens.Skill.Beam do
       "beam_burst_detection" => &burst_detection_wrapper/2,
       "beam_hot_functions" => &hot_functions_wrapper/2,
       "beam_atom_growth_rate" => &atom_growth_rate_wrapper/1,
-      "beam_atom_leak_detected" => &atom_leak_detected_wrapper/0
+      "beam_atom_leak_detected" => &atom_leak_detected_wrapper/0,
+      "beam_atom_leak_analysis" => &atom_leak_analysis_wrapper/0,
+      "beam_atom_predict" => &atom_predict_wrapper/1,
+      "beam_atom_sources" => &atom_sources_wrapper/1,
+      "beam_atom_reminder" => &atom_reminder_wrapper/0
     }
   end
 
@@ -207,6 +211,18 @@ defmodule Beamlens.Skill.Beam do
 
     ### beam_atom_leak_detected()
     Detect potential atom leaks by analyzing growth rate and utilization patterns. Returns leak suspicion status with supporting metrics and actionable recommendations.
+
+    ### beam_atom_leak_analysis()
+    Comprehensive atom leak analysis with trend classification. Returns current_count, limit, utilization_pct, growth_rate_per_hour, time_until_full_hours, leak_detected (boolean), trend (:stable | :growing | :dangerous | :insufficient_data), and samples_count. Use for detailed leak detection and trend analysis.
+
+    ### beam_atom_predict(hours_ahead)
+    Predict atom table usage at future time. Returns projected_count, projected_utilization_pct, will_exhaust (boolean), exhaustion_date (datetime string or nil), hours_ahead, and growth_rate_per_hour. Use to forecast when atom exhaustion will occur.
+
+    ### beam_atom_sources(limit)
+    Identify likely sources of dynamic atom creation by scanning code. Returns count and sources list with file, line, pattern (unsafe function matched), recommendation (fix guidance), and confidence (0.0-1.0). Scans for binary_to_atom, list_to_atom, and :xmerl usage.
+
+    ### beam_atom_reminder()
+    Remediation guidance for atom leaks. Returns comprehensive text with thresholds, common sources, how to fix, prevention strategies, and verification steps. Use when leaks are detected to guide remediation efforts.
     """
   end
 
@@ -1298,5 +1314,311 @@ defmodule Beamlens.Skill.Beam do
     else
       {:error, :rate_limited}
     end
+  end
+
+  defp atom_leak_analysis_wrapper do
+    atom_leak_analysis()
+  end
+
+  defp atom_leak_analysis do
+    current_count = :erlang.system_info(:atom_count)
+    limit = :erlang.system_info(:atom_limit)
+    utilization_pct = Float.round(current_count / limit * 100, 2)
+
+    samples =
+      try do
+        AtomStore.get_samples()
+      rescue
+        _ -> []
+      end
+
+    {growth_rate_per_hour, trend, samples_count} =
+      if length(samples) >= 2 do
+        calculate_growth_metrics(samples)
+      else
+        {nil, :insufficient_data, length(samples)}
+      end
+
+    time_until_full_hours =
+      if growth_rate_per_hour && growth_rate_per_hour > 0 do
+        (limit - current_count) / growth_rate_per_hour
+      else
+        :infinity
+      end
+
+    leak_detected = detect_leak(utilization_pct, growth_rate_per_hour, trend)
+
+    %{
+      current_count: current_count,
+      limit: limit,
+      utilization_pct: utilization_pct,
+      growth_rate_per_hour: growth_rate_per_hour,
+      time_until_full_hours: time_until_full_hours,
+      leak_detected: leak_detected,
+      trend: trend,
+      samples_count: samples_count
+    }
+  end
+
+  defp calculate_growth_metrics(samples) do
+    oldest = List.first(samples)
+    newest = List.last(samples)
+
+    time_delta_hours = (newest.timestamp - oldest.timestamp) / (1000 * 60 * 60)
+
+    if time_delta_hours > 0 do
+      count_delta = newest.count - oldest.count
+      growth_rate_per_hour = count_delta / time_delta_hours
+      trend = classify_trend(newest.count, oldest.count, growth_rate_per_hour, time_delta_hours)
+      {Float.round(growth_rate_per_hour, 2), trend, length(samples)}
+    else
+      {nil, :insufficient_data, length(samples)}
+    end
+  end
+
+  defp classify_trend(_newest, _oldest, rate, _time) when rate > 100, do: :dangerous
+  defp classify_trend(_newest, _oldest, rate, _time) when rate > 10, do: :growing
+  defp classify_trend(newest, oldest, _rate, _time) when newest > oldest, do: :stable
+  defp classify_trend(_, _, _, _), do: :stable
+
+  defp detect_leak(utilization_pct, growth_rate_per_hour, trend) do
+    cond do
+      utilization_pct > 50 and growth_rate_per_hour != nil and growth_rate_per_hour > 10 ->
+        true
+
+      utilization_pct > 30 and trend == :dangerous ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  defp atom_predict_wrapper(hours_ahead) when is_number(hours_ahead) do
+    atom_predict(%{hours_ahead: hours_ahead})
+  end
+
+  defp atom_predict(opts) do
+    hours_ahead = max(Map.get(opts, :hours_ahead, 24), 1)
+    current_count = :erlang.system_info(:atom_count)
+    limit = :erlang.system_info(:atom_limit)
+
+    samples =
+      try do
+        AtomStore.get_samples()
+      rescue
+        _ -> []
+      end
+
+    build_prediction(samples, hours_ahead, current_count, limit)
+  end
+
+  defp build_prediction(samples, hours_ahead, current_count, limit) when length(samples) < 2 do
+    %{
+      projected_count: current_count,
+      projected_utilization_pct: Float.round(current_count / limit * 100, 2),
+      will_exhaust: false,
+      exhaustion_date: nil,
+      hours_ahead: hours_ahead,
+      error: "insufficient_data"
+    }
+  end
+
+  defp build_prediction(samples, hours_ahead, current_count, limit) do
+    oldest = List.first(samples)
+    newest = List.last(samples)
+    time_delta_hours = (newest.timestamp - oldest.timestamp) / (1000 * 60 * 60)
+
+    if time_delta_hours > 0 do
+      calculate_projection(oldest, newest, hours_ahead, current_count, limit, time_delta_hours)
+    else
+      %{
+        projected_count: current_count,
+        projected_utilization_pct: Float.round(current_count / limit * 100, 2),
+        will_exhaust: false,
+        exhaustion_date: nil,
+        hours_ahead: hours_ahead,
+        error: "insufficient_time_span"
+      }
+    end
+  end
+
+  defp calculate_projection(oldest, newest, hours_ahead, current_count, limit, time_delta_hours) do
+    growth_rate_per_hour = (newest.count - oldest.count) / time_delta_hours
+    projected_count = trunc(current_count + growth_rate_per_hour * hours_ahead)
+    projected_utilization_pct = Float.round(projected_count / limit * 100, 2)
+    will_exhaust = projected_count >= limit
+
+    exhaustion_date =
+      calculate_exhaustion_date(will_exhaust, growth_rate_per_hour, current_count, limit)
+
+    %{
+      projected_count: projected_count,
+      projected_utilization_pct: projected_utilization_pct,
+      will_exhaust: will_exhaust,
+      exhaustion_date: exhaustion_date,
+      hours_ahead: hours_ahead,
+      growth_rate_per_hour: Float.round(growth_rate_per_hour, 2)
+    }
+  end
+
+  defp calculate_exhaustion_date(will_exhaust, growth_rate_per_hour, current_count, limit)
+       when will_exhaust and growth_rate_per_hour > 0 do
+    hours_until_full = (limit - current_count) / growth_rate_per_hour
+    datetime = DateTime.add(DateTime.utc_now(), trunc(hours_until_full * 3600), :second)
+    DateTime.to_string(datetime)
+  end
+
+  defp calculate_exhaustion_date(_, _, _, _), do: nil
+
+  defp atom_sources_wrapper(limit) when is_number(limit) do
+    atom_sources(%{limit: limit})
+  end
+
+  defp atom_sources(opts) do
+    limit = min(Map.get(opts, :limit) || 10, 50)
+
+    sources = find_unsafe_atom_patterns(limit)
+
+    %{
+      count: length(sources),
+      sources: sources
+    }
+  end
+
+  defp find_unsafe_atom_patterns(limit) do
+    app_path = File.cwd!()
+
+    unsafe_patterns = [
+      {:binary_to_atom, "binary_to_atom", "Use binary_to_existing_atom/2 instead"},
+      {:list_to_atom, "list_to_atom", "Use list_to_existing_atom/1 instead"},
+      {:xmerl, ":xmerl", "Known atom creator - use exml or erlsom instead"}
+    ]
+
+    sources =
+      app_path
+      |> find_elixir_files()
+      |> Enum.flat_map(fn file_path -> scan_file_for_atoms(file_path, unsafe_patterns) end)
+      |> Enum.uniq_by(fn source -> {source.file, source.line} end)
+      |> Enum.take(limit)
+
+    sources
+  end
+
+  defp find_elixir_files(path) do
+    expanded_path = Path.expand(path)
+
+    if File.dir?(expanded_path) do
+      Path.wildcard(Path.join([expanded_path, "**", "*.ex"]))
+    else
+      []
+    end
+  end
+
+  defp scan_file_for_atoms(file_path, patterns) do
+    file_path
+    |> File.read!()
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {line, line_num} ->
+      scan_line_for_patterns(line, line_num, file_path, patterns)
+    end)
+  end
+
+  defp scan_line_for_patterns(line, line_num, file_path, patterns) do
+    patterns
+    |> Enum.filter(fn {_key, pattern, _recommendation} -> String.contains?(line, pattern) end)
+    |> Enum.map(fn {_key, pattern, recommendation} ->
+      relative_path = Path.relative_to(file_path, File.cwd!())
+
+      %{
+        file: relative_path,
+        line: line_num,
+        pattern: pattern,
+        recommendation: recommendation,
+        confidence: calculate_confidence(line, pattern)
+      }
+    end)
+  end
+
+  defp calculate_confidence(line, "binary_to_atom") do
+    cond do
+      String.contains?(line, "binary_to_existing_atom") -> 0.0
+      String.contains?(line, "binary_to_atom(") -> 0.9
+      String.contains?(line, "binary_to_atom ") -> 0.9
+      true -> 0.5
+    end
+  end
+
+  defp calculate_confidence(line, "list_to_atom") do
+    cond do
+      String.contains?(line, "list_to_existing_atom") -> 0.0
+      String.contains?(line, "list_to_atom(") -> 0.9
+      String.contains?(line, "list_to_atom ") -> 0.9
+      true -> 0.5
+    end
+  end
+
+  defp calculate_confidence(_line, ":xmerl"), do: 0.8
+  defp calculate_confidence(_, _), do: 0.5
+
+  defp atom_reminder_wrapper do
+    atom_reminder()
+  end
+
+  defp atom_reminder do
+    """
+    ## Atom Leak Remediation
+
+    Atoms are NEVER garbage collected. Once created, they stay in the atom table forever.
+    When the atom table is full, the VM crashes irrecoverably.
+
+    ## Critical Thresholds
+    - Utilization > 30%: Investigate immediately
+    - Utilization > 50%: Critical, will crash soon
+    - Growth > 10 atoms/hour: Leak detected
+    - Growth > 100 atoms/hour: SEVERE leak
+
+    ## Common Sources of Atom Leaks
+
+    1. **binary_to_atom/1** - Most common cause
+       - FIX: Use binary_to_existing_atom/2 with fallback
+       - Example: binary_to_existing_atom(bin, :utf8) rescue atom -> binary_to_atom(bin, :utf8)
+
+    2. **list_to_atom/1** - Dynamic atom creation
+       - FIX: Use list_to_existing_atom/1
+       - Validate inputs before conversion
+
+    3. **xmerl XML parsing** - Creates atoms dynamically
+       - FIX: Use exml or erlsom libraries
+       - These libraries avoid dynamic atom creation
+
+    4. **Dynamic node names** - Node.connect/1 with dynamic names
+       - FIX: Use fixed set of node names
+       - Validate node names against whitelist
+
+    ## How to Fix Atom Leaks
+
+    1. Find the source: Use beam_atom_sources(10) to locate unsafe patterns
+    2. Replace with safe alternatives
+    3. Review all code that creates atoms dynamically
+    4. Test thoroughly with beam_atom_leak_analysis()
+    5. Restart node to reclaim atom table (only way to clear atoms)
+
+    ## Prevention
+
+    - Never use binary_to_atom/1 or list_to_atom/1 with untrusted input
+    - Avoid xmerl for XML parsing in production
+    - Use atom surveillance in CI/CD
+    - Set up alerts for atom utilization > 30%
+    - Monitor atom growth rate regularly
+
+    ## Verification
+
+    After fixes:
+    - Run beam_atom_leak_analysis() to verify growth rate is normal
+    - Run beam_atom_predict(168) to check 1-week projection
+    - Monitor utilization remains stable or decreases
+    """
   end
 end
