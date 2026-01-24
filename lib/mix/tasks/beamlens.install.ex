@@ -79,7 +79,8 @@ defmodule Mix.Tasks.Beamlens.Install do
 
   defp build_child_spec do
     """
-    # Beamlens monitors BEAM VM health. See docs/providers.md to configure LLM providers.
+    # Beamlens monitors BEAM VM health. Configure LLM providers with client_registry (see docs/providers.md):
+    # {Beamlens, client_registry: %{primary: "Anthropic", clients: [%{name: "Anthropic", provider: "anthropic", options: %{model: "claude-haiku-4-5-20251001"}}]}}
     {Beamlens, []}
     """
   end
