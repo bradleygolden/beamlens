@@ -79,7 +79,7 @@ defmodule Mix.Tasks.Beamlens.Install do
 
   defp build_child_spec do
     """
-    # Beamlens monitors BEAM VM health. Configure LLM providers with client_registry (see docs/providers.md)
+    # Beamlens monitors BEAM VM health. See docs/providers.md to configure LLM providers.
     {Beamlens, []}
     """
   end

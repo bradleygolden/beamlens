@@ -78,6 +78,8 @@ defmodule Beamlens.Supervisor do
   @impl true
   def init(opts) do
     skills = Keyword.get(opts, :skills, Beamlens.Operator.Supervisor.builtin_skills())
+    # Treat empty skills list as "use defaults" for installer convenience
+    skills = if skills == [], do: Beamlens.Operator.Supervisor.builtin_skills(), else: skills
     client_registry = Keyword.get(opts, :client_registry)
 
     {skill_modules, skill_configs} = parse_skills(skills)
